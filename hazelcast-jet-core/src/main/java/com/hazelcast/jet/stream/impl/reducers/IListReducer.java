@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,14 +20,14 @@ import com.hazelcast.jet.core.DAG;
 import com.hazelcast.jet.core.Vertex;
 import com.hazelcast.jet.core.processor.SinkProcessors;
 import com.hazelcast.jet.stream.DistributedCollector.Reducer;
-import com.hazelcast.jet.stream.IStreamList;
+import com.hazelcast.jet.IListJet;
 import com.hazelcast.jet.stream.impl.pipeline.Pipe;
 import com.hazelcast.jet.stream.impl.pipeline.StreamContext;
 
 import static com.hazelcast.jet.core.Edge.between;
 import static com.hazelcast.jet.stream.impl.StreamUtil.executeJob;
 
-public class IListReducer<T> implements Reducer<T, IStreamList<T>> {
+public class IListReducer<T> implements Reducer<T, IListJet<T>> {
 
     private final String listName;
 
@@ -36,8 +36,8 @@ public class IListReducer<T> implements Reducer<T, IStreamList<T>> {
     }
 
     @Override
-    public IStreamList<T> reduce(StreamContext context, Pipe<? extends T> upstream) {
-        IStreamList<T> target = context.getJetInstance().getList(listName);
+    public IListJet<T> reduce(StreamContext context, Pipe<? extends T> upstream) {
+        IListJet<T> target = context.getJetInstance().getList(listName);
         DAG dag = new DAG();
         Vertex vertex = upstream.buildDAG(dag);
         Vertex writer = dag.newVertex("write-list-" + listName, SinkProcessors.writeListP(listName)).localParallelism(1);

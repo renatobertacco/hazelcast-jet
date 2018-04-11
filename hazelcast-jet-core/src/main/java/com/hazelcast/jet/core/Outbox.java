@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -64,7 +64,7 @@ public interface Outbox {
      * @return {@code true} if the outbox accepted the item
      */
     @CheckReturnValue
-    boolean offer(int[] ordinals, @Nonnull Object item);
+    boolean offer(@Nonnull int[] ordinals, @Nonnull Object item);
 
     /**
      * Offers the given key and value pair to the processor's snapshot

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,12 +36,12 @@ import static org.mockito.Mockito.mock;
 public class CacheDecoratorTest {
 
     private ICache<String, String> cacheMock;
-    private CacheDecorator deco;
+    private ICacheDecorator deco;
 
     @Before
     public void before() {
         cacheMock = mock(ICache.class);
-        deco = new CacheDecorator(cacheMock, mock(JetInstance.class));
+        deco = new ICacheDecorator(cacheMock, mock(JetInstance.class));
     }
 
     @Test

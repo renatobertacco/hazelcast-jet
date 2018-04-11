@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package com.hazelcast.jet.datamodel;
 
+import java.util.Objects;
 import javax.annotation.Nonnull;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -28,7 +29,7 @@ import java.util.Set;
  * A heterogeneous map from {@code Tag<E>} to {@code Collection<E>}, where
  * {@code E} can be different for each tag. Useful as a container of
  * co-grouped items, where each tag corresponds to one contributing
- * pipeline stage.
+ * pipeline pipeline.
  * <p>
  * This is a less type-safe, but more flexible alternative to the {@link
  * TwoBags} and {@link ThreeBags} containers, which have a fixed (and
@@ -101,16 +102,25 @@ public class BagsByTag {
         that.components.forEach((k, v) -> ensureBag(k).addAll(v));
     }
 
+    /**
+     * Returns a safe copy of this container.
+     */
+    public BagsByTag finish() {
+        BagsByTag copy = new BagsByTag();
+        copy.components.putAll(components);
+        return copy;
+    }
+
     @Override
     public boolean equals(Object o) {
         return this == o
                 || o instanceof BagsByTag
-                && this.components.equals(((BagsByTag) o).components);
+                && Objects.equals(this.components, ((BagsByTag) o).components);
     }
 
     @Override
     public int hashCode() {
-        return components.hashCode();
+        return Objects.hashCode(components);
     }
 
     @Override

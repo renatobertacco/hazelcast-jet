@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,9 @@
 package com.hazelcast.jet.stream;
 
 
+import com.hazelcast.jet.ICacheJet;
+import com.hazelcast.jet.IListJet;
+import com.hazelcast.jet.IMapJet;
 import org.junit.Test;
 
 import java.util.Map.Entry;
@@ -30,10 +33,10 @@ public class FindAnyTest extends AbstractStreamTest {
 
     @Test
     public void sourceMap() {
-        IStreamMap<String, Integer> map = getMap();
+        IMapJet<String, Integer> map = getMap();
         fillMap(map);
 
-        Optional<Entry<String, Integer>> first = map.stream().findAny();
+        Optional<Entry<String, Integer>> first = DistributedStream.fromMap(map).findAny();
 
         assertTrue(first.isPresent());
         Entry<String, Integer> entry = first.get();
@@ -44,10 +47,10 @@ public class FindAnyTest extends AbstractStreamTest {
 
     @Test
     public void sourceCache() {
-        IStreamCache<String, Integer> cache = getCache();
+        ICacheJet<String, Integer> cache = getCache();
         fillCache(cache);
 
-        Optional<Entry<String, Integer>> first = cache.stream().findAny();
+        Optional<Entry<String, Integer>> first = DistributedStream.Cache.fromCache(cache).findAny();
 
         assertTrue(first.isPresent());
         Entry<String, Integer> entry = first.get();
@@ -58,28 +61,28 @@ public class FindAnyTest extends AbstractStreamTest {
 
     @Test
     public void sourceEmptyMap() {
-        IStreamMap<String, Integer> map = getMap();
+        IMapJet<String, Integer> map = getMap();
 
-        Optional<Entry<String, Integer>> first = map.stream().findAny();
+        Optional<Entry<String, Integer>> first = DistributedStream.fromMap(map).findAny();
 
         assertFalse(first.isPresent());
     }
 
     @Test
     public void sourceEmptyCache() {
-        IStreamCache<String, Integer> cache = getCache();
+        ICacheJet<String, Integer> cache = getCache();
 
-        Optional<Entry<String, Integer>> first = cache.stream().findAny();
+        Optional<Entry<String, Integer>> first = DistributedStream.Cache.fromCache(cache).findAny();
 
         assertFalse(first.isPresent());
     }
 
     @Test
     public void sourceList() {
-        IStreamList<Integer> list = getList();
+        IListJet<Integer> list = getList();
         fillList(list);
 
-        Optional<Integer> first = list.stream().findFirst();
+        Optional<Integer> first = DistributedStream.fromList(list).findFirst();
 
         assertTrue(first.isPresent());
         assertTrue(list.contains(first.get()));
@@ -87,9 +90,9 @@ public class FindAnyTest extends AbstractStreamTest {
 
     @Test
     public void sourceEmptyList() {
-        IStreamList<Integer> list = getList();
+        IListJet<Integer> list = getList();
 
-        Optional<Integer> first = list.stream().findAny();
+        Optional<Integer> first = DistributedStream.fromList(list).findAny();
 
         assertFalse(first.isPresent());
     }

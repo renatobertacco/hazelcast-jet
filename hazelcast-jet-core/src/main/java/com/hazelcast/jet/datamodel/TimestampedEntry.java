@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ package com.hazelcast.jet.datamodel;
 import javax.annotation.Nonnull;
 import java.util.Map;
 
-import static com.hazelcast.jet.impl.util.Util.toLocalDateTime;
+import static com.hazelcast.jet.impl.util.Util.toLocalTime;
 
 /**
  * A {@code Map.Entry} extended with a {@code long timestamp}, used for
@@ -30,7 +30,9 @@ import static com.hazelcast.jet.impl.util.Util.toLocalDateTime;
  */
 public final class TimestampedEntry<K, V> implements Map.Entry<K, V> {
     private final long timestamp;
+    @Nonnull
     private final K key;
+    @Nonnull
     private final V value;
 
     /**
@@ -40,6 +42,18 @@ public final class TimestampedEntry<K, V> implements Map.Entry<K, V> {
         this.timestamp = timestamp;
         this.key = key;
         this.value = value;
+    }
+
+    /**
+     * This constructor exists in order to match the shape of the functional
+     * interface {@link com.hazelcast.jet.function.KeyedWindowResultFunction
+     * KeyedWindowResultFunction}.
+     * <p>
+     * Constructs a timestamped entry with the supplied field values. Ignores
+     * the first argument.
+     */
+    public TimestampedEntry(long ignored, long timestamp, @Nonnull K key, @Nonnull V value) {
+        this(timestamp, key, value);
     }
 
     /**
@@ -85,10 +99,6 @@ public final class TimestampedEntry<K, V> implements Map.Entry<K, V> {
 
     @Override
     public String toString() {
-        return "TimestampedEntry{ts="
-                + timestamp
-                + ", formattedTs="
-                + toLocalDateTime(timestamp)
-                + ", key=" + key + ", value=" + value + '}';
+        return String.format("TimestampedEntry{ts=%s, key='%s', value='%s'}", toLocalTime(timestamp), key, value);
     }
 }

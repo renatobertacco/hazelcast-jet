@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package com.hazelcast.jet.stream;
 import com.hazelcast.cache.ICache;
 import com.hazelcast.core.IList;
 import com.hazelcast.core.IMap;
+import com.hazelcast.jet.IListJet;
 import org.junit.Test;
 
 import java.util.AbstractMap;
@@ -30,8 +31,8 @@ public class FilterTest extends AbstractStreamTest {
     @Test
     public void sourceMap() {
         IMap<String, Integer> result = streamMap()
-                                          .filter(f -> f.getValue() < 10)
-                                          .collect(DistributedCollectors.toIMap(randomName()));
+                .filter(f -> f.getValue() < 10)
+                .collect(DistributedCollectors.toIMap(randomName()));
 
         assertEquals(10, result.size());
 
@@ -57,12 +58,12 @@ public class FilterTest extends AbstractStreamTest {
     }
 
     @Test
-    public void sourceList() throws InterruptedException {
-        IStreamList<Integer> list = getList();
+    public void sourceList() {
+        IListJet<Integer> list = getList();
         fillList(list);
 
-        IList<Integer> result = list
-                .stream()
+        IList<Integer> result = DistributedStream
+                .fromList(list)
                 .filter(f -> f < 100)
                 .collect(DistributedCollectors.toIList(randomString()));
 

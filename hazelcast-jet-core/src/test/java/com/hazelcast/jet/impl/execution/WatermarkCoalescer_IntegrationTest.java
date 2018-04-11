@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -44,7 +44,7 @@ import java.util.List;
 import static com.hazelcast.jet.Util.entry;
 import static com.hazelcast.jet.core.Edge.between;
 import static com.hazelcast.jet.core.Edge.from;
-import static com.hazelcast.jet.core.ProcessorMetaSupplier.dontParallelize;
+import static com.hazelcast.jet.core.ProcessorMetaSupplier.preferLocalParallelismOne;
 import static com.hazelcast.jet.core.processor.SinkProcessors.writeListP;
 import static com.hazelcast.jet.impl.execution.DoneItem.DONE_ITEM;
 import static com.hazelcast.jet.impl.execution.WatermarkCoalescer.IDLE_MESSAGE;
@@ -184,16 +184,16 @@ public class WatermarkCoalescer_IntegrationTest extends JetTestSupport {
         dag = createDag(mode, singletonList(wm(100)), singletonList(wm(150)));
 
         JobConfig config = new JobConfig().setMaxWatermarkRetainMillis(5000);
+        long time = System.nanoTime();
         instance.newJob(dag, config);
-
         assertTrueEventually(() -> assertEquals(1, sinkList.size()), 3);
         assertEquals("wm(100)", sinkList.get(0));
-        long time = System.nanoTime();
 
         assertTrueEventually(() -> assertEquals(2, sinkList.size()), 6);
+
         assertEquals("wm(150)", sinkList.get(1));
         long elapsedMs = NANOSECONDS.toMillis(System.nanoTime() - time);
-        assertTrue("Too little elapsed time, WM probably emitted immediately", elapsedMs > 3000);
+        assertTrue("Too little elapsed time, WM probably emitted immediately: " + elapsedMs, elapsedMs > 3000);
     }
 
     @Test
@@ -245,10 +245,10 @@ public class WatermarkCoalescer_IntegrationTest extends JetTestSupport {
     public void when_waitingForWmOnI2ButI2BecomesDone_then_wmFromI1Forwarded() {
         dag = createDag(mode, singletonList(wm(100)), asList(delay(500), DONE_ITEM));
 
-        JobConfig config = new JobConfig().setMaxWatermarkRetainMillis(5000);
+        JobConfig config = new JobConfig().setMaxWatermarkRetainMillis(10_000);
         instance.newJob(dag, config);
 
-        assertTrueEventually(() -> assertEquals(1, sinkList.size()), 3);
+        assertTrueEventually(() -> assertEquals(1, sinkList.size()), 6);
         assertEquals("wm(100)", sinkList.get(0));
     }
 
@@ -302,7 +302,7 @@ public class WatermarkCoalescer_IntegrationTest extends JetTestSupport {
                 if (item instanceof SerializableWm) {
                     item = new Watermark(((SerializableWm) item).timestamp);
                 } else if (item instanceof Delay) {
-                    getLogger().info("will wait " + MILLISECONDS.toNanos(((Delay) item).millis) + " ms");
+                    getLogger().info("will wait " + ((Delay) item).millis + " ms");
                     nextItemAt = System.nanoTime() + MILLISECONDS.toNanos(((Delay) item).millis);
                     pos++;
                     return false;
@@ -327,7 +327,7 @@ public class WatermarkCoalescer_IntegrationTest extends JetTestSupport {
          */
         public static ProcessorMetaSupplier supplier(List<Object> list) {
             List<Object> listClone = replaceWatermarks(list);
-            return dontParallelize(() -> new ListSource(listClone));
+            return preferLocalParallelismOne(() -> new ListSource(listClone));
         }
 
         /**
@@ -339,7 +339,7 @@ public class WatermarkCoalescer_IntegrationTest extends JetTestSupport {
             for (int i = 0; i < lists.length; i++) {
                 lists[i] = replaceWatermarks(lists[i]);
             }
-            return dontParallelize(count -> Arrays.stream(lists).map(ListSource::new).collect(toList()));
+            return preferLocalParallelismOne(count -> Arrays.stream(lists).map(ListSource::new).collect(toList()));
         }
 
         // return a new list with non-serializable Watermark objects replaced.

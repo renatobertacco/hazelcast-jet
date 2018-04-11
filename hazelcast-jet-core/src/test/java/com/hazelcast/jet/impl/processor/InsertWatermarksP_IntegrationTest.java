@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,10 +29,10 @@ import org.junit.Test;
 import java.util.Arrays;
 
 import static com.hazelcast.jet.core.Edge.between;
+import static com.hazelcast.jet.core.SlidingWindowPolicy.tumblingWinPolicy;
 import static com.hazelcast.jet.core.WatermarkEmissionPolicy.emitByFrame;
 import static com.hazelcast.jet.core.WatermarkGenerationParams.wmGenParams;
-import static com.hazelcast.jet.core.WatermarkPolicies.withFixedLag;
-import static com.hazelcast.jet.core.WindowDefinition.tumblingWindowDef;
+import static com.hazelcast.jet.core.WatermarkPolicies.limitingLag;
 import static com.hazelcast.jet.core.processor.SinkProcessors.writeListP;
 import static java.util.Arrays.asList;
 import static org.junit.Assert.assertArrayEquals;
@@ -51,7 +51,7 @@ public class InsertWatermarksP_IntegrationTest extends JetTestSupport {
         DAG dag = new DAG();
         Vertex source = dag.newVertex("source", ListSource.supplier(asList(111L, 222L, 333L)));
         Vertex iwm = dag.newVertex("iwm", Processors.insertWatermarksP(wmGenParams(
-                (Long x) -> x, withFixedLag(100), emitByFrame(tumblingWindowDef(100)), -1)))
+                (Long x) -> x, limitingLag(100), emitByFrame(tumblingWinPolicy(100)), -1)))
                 .localParallelism(1);
         Vertex mapWmToStr = dag.newVertex("mapWmToStr", MapWatermarksToString::new)
                 .localParallelism(1);
@@ -64,6 +64,6 @@ public class InsertWatermarksP_IntegrationTest extends JetTestSupport {
         instance.newJob(dag).join();
 
         Object[] actual = instance.getList("list").toArray();
-        assertArrayEquals(Arrays.toString(actual), new Object[]{"wm(11)", 111L, "wm(122)", 222L, "wm(233)", 333L}, actual);
+        assertArrayEquals(Arrays.toString(actual), new Object[]{"wm(0)", 111L, "wm(100)", 222L, "wm(200)", 333L}, actual);
     }
 }

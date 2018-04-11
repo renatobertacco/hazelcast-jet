@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package com.hazelcast.jet.datamodel;
 
+import java.util.Objects;
 import javax.annotation.Nonnull;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -27,16 +28,16 @@ import static java.util.Collections.emptyList;
  * type. Bags are identified by their index: 0, 1, and 2. Useful as
  * a container of co-grouped data.
  *
- * @param <E0> type of items in bag-0
- * @param <E1> type of items in bag-1
- * @param <E2> type of items in bag-2
+ * @param <T0> type of items in bag-0
+ * @param <T1> type of items in bag-1
+ * @param <T2> type of items in bag-2
  */
-public final class ThreeBags<E0, E1, E2> {
-    private final Collection<E0> bag0;
-    private final Collection<E1> bag1;
-    private final Collection<E2> bag2;
+public final class ThreeBags<T0, T1, T2> {
+    private final Collection<T0> bag0;
+    private final Collection<T1> bag1;
+    private final Collection<T2> bag2;
 
-    private ThreeBags(@Nonnull Collection<E0> bag0, @Nonnull Collection<E1> bag1, @Nonnull Collection<E2> bag2) {
+    private ThreeBags(@Nonnull Collection<T0> bag0, @Nonnull Collection<T1> bag1, @Nonnull Collection<T2> bag2) {
         this.bag0 = new ArrayList<>(bag0);
         this.bag1 = new ArrayList<>(bag1);
         this.bag2 = new ArrayList<>(bag2);
@@ -66,7 +67,7 @@ public final class ThreeBags<E0, E1, E2> {
      * Retrieves the bag at index 0.
      */
     @Nonnull
-    public Collection<E0> bag0() {
+    public Collection<T0> bag0() {
         return bag0;
     }
 
@@ -74,7 +75,7 @@ public final class ThreeBags<E0, E1, E2> {
      * Retrieves the bag at index 1.
      */
     @Nonnull
-    public Collection<E1> bag1() {
+    public Collection<T1> bag1() {
         return bag1;
     }
 
@@ -82,7 +83,7 @@ public final class ThreeBags<E0, E1, E2> {
      * Retrieves the bag at index 2.
      */
     @Nonnull
-    public Collection<E2> bag2() {
+    public Collection<T2> bag2() {
         return bag2;
     }
 
@@ -90,10 +91,27 @@ public final class ThreeBags<E0, E1, E2> {
      * Combines this and the supplied container by merging all the supplied
      * container's data into this one. Leaves the supplied container unchanged.
      */
-    public void combineWith(@Nonnull ThreeBags<E0, E1, E2> that) {
+    public void combineWith(@Nonnull ThreeBags<T0, T1, T2> that) {
         bag0.addAll(that.bag0());
         bag1.addAll(that.bag1());
         bag2.addAll(that.bag2());
+    }
+
+    /**
+     * Deducts the supplied container from this one by removing all the items
+     * that the supplied one contains. Leaves the supplied container unchanged.
+     */
+    public void deduct(@Nonnull ThreeBags<T0, T1, T2> that) {
+        bag0.removeAll(that.bag0());
+        bag1.removeAll(that.bag1());
+        bag2.removeAll(that.bag2());
+    }
+
+    /**
+     * Returns a safe copy of this container.
+     */
+    public ThreeBags<T0, T1, T2> finish() {
+        return new ThreeBags<>(new ArrayList<>(bag0), new ArrayList<>(bag1), new ArrayList<>(bag2));
     }
 
     @Override
@@ -101,21 +119,21 @@ public final class ThreeBags<E0, E1, E2> {
         ThreeBags<?, ?, ?> that;
         return this == o ||
                 o instanceof ThreeBags
-                && this.bag0.equals((that = (ThreeBags<?, ?, ?>) o).bag0)
-                && this.bag1.equals(that.bag1)
-                && this.bag2.equals(that.bag2);
+                        && Objects.equals(this.bag0, (that = (ThreeBags<?, ?, ?>) o).bag0)
+                        && Objects.equals(this.bag1, that.bag1)
+                        && Objects.equals(this.bag2, that.bag2);
     }
 
     @Override
     public int hashCode() {
-        int hc = bag0.hashCode();
-        hc = 73 * hc + bag1.hashCode();
-        hc = 73 * hc + bag2.hashCode();
+        int hc = Objects.hashCode(bag0);
+        hc = 73 * hc + Objects.hashCode(bag1);
+        hc = 73 * hc + Objects.hashCode(bag2);
         return hc;
     }
 
     @Override
     public String toString() {
-        return "ThreeBags{" + bag0 + ", " + bag1 + ", " + bag2 + '}';
+        return "ThreeBags{bag0=" + bag0 + ", bag1=" + bag1 + ", bag2=" + bag2 + '}';
     }
 }

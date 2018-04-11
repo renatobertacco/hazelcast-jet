@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,9 +21,7 @@ import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.jet.config.JetConfig;
 import com.hazelcast.jet.config.JobConfig;
 import com.hazelcast.jet.core.DAG;
-import com.hazelcast.jet.stream.IStreamList;
-import com.hazelcast.jet.stream.IStreamMap;
-import com.hazelcast.jet.stream.JetCacheManager;
+import com.hazelcast.jet.pipeline.Pipeline;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -132,17 +130,16 @@ public interface JetInstance {
      * @return distributed map instance with the specified name
      */
     @Nonnull
-    <K, V> IStreamMap<K, V> getMap(@Nonnull String name);
+    <K, V> IMapJet<K, V> getMap(@Nonnull String name);
 
     /**
      * Returns the distributed list instance with the specified name.
-     * Index-based operations on the list are not supported.
      *
      * @param name name of the distributed list
      * @return distributed list instance with the specified name
      */
     @Nonnull
-    <E> IStreamList<E> getList(@Nonnull String name);
+    <E> IListJet<E> getList(@Nonnull String name);
 
     /**
      * Obtain the {@link JetCacheManager} that provides access to JSR-107 (JCache) caches

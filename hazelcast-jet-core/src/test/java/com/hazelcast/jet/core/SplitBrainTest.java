@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -57,9 +57,9 @@ public class SplitBrainTest extends JetSplitBrainTestSupport {
 
     @Override
     protected void onBeforeSetup() {
-        MockPS.completeCount.set(0);
+        MockPS.closeCount.set(0);
         MockPS.initCount.set(0);
-        MockPS.completeErrors.clear();
+        MockPS.receivedCloseErrors.clear();
 
         StuckProcessor.proceedLatch = new CountDownLatch(1);
     }
@@ -117,11 +117,11 @@ public class SplitBrainTest extends JetSplitBrainTestSupport {
         Consumer<JetInstance[]> afterMerge = instances -> {
             assertTrueEventually(() -> {
                 assertEquals(clusterSize + firstSubClusterSize, MockPS.initCount.get());
-                assertEquals(clusterSize + firstSubClusterSize, MockPS.completeCount.get());
+                assertEquals(clusterSize + firstSubClusterSize, MockPS.closeCount.get());
             });
 
-            assertEquals(clusterSize, MockPS.completeErrors.size());
-            MockPS.completeErrors.forEach(t -> assertTrue(t instanceof TopologyChangedException));
+            assertEquals(clusterSize, MockPS.receivedCloseErrors.size());
+            MockPS.receivedCloseErrors.forEach(t -> assertTrue(t instanceof TopologyChangedException));
 
             try {
                 minorityJobFutureRef[0].get();
@@ -173,11 +173,11 @@ public class SplitBrainTest extends JetSplitBrainTestSupport {
         Consumer<JetInstance[]> afterMerge = instances -> {
             assertTrueEventually(() -> {
                 assertEquals(clusterSize * 2, MockPS.initCount.get());
-                assertEquals(clusterSize * 2, MockPS.completeCount.get());
+                assertEquals(clusterSize * 2, MockPS.closeCount.get());
             });
 
-            assertEquals(clusterSize, MockPS.completeErrors.size());
-            MockPS.completeErrors.forEach(t -> assertTrue(t instanceof TopologyChangedException));
+            assertEquals(clusterSize, MockPS.receivedCloseErrors.size());
+            MockPS.receivedCloseErrors.forEach(t -> assertTrue(t instanceof TopologyChangedException));
         };
 
         testSplitBrain(firstSubClusterSize, secondSubClusterSize, beforeSplit, onSplit, afterMerge);
@@ -214,11 +214,11 @@ public class SplitBrainTest extends JetSplitBrainTestSupport {
         Consumer<JetInstance[]> afterMerge = instances -> {
             assertTrueEventually(() -> {
                 assertEquals(clusterSize * 2, MockPS.initCount.get());
-                assertEquals(clusterSize * 2, MockPS.completeCount.get());
+                assertEquals(clusterSize * 2, MockPS.closeCount.get());
             });
 
-            assertEquals(clusterSize, MockPS.completeErrors.size());
-            MockPS.completeErrors.forEach(t -> assertTrue(t instanceof TopologyChangedException));
+            assertEquals(clusterSize, MockPS.receivedCloseErrors.size());
+            MockPS.receivedCloseErrors.forEach(t -> assertTrue(t instanceof TopologyChangedException));
         };
 
         testSplitBrain(firstSubClusterSize, secondSubClusterSize, beforeSplit, onSplit, afterMerge);
@@ -240,8 +240,8 @@ public class SplitBrainTest extends JetSplitBrainTestSupport {
         };
 
         Consumer<JetInstance[]> afterMerge = instances -> {
-            assertEquals(secondSubClusterSize, MockPS.completeErrors.size());
-            MockPS.completeErrors.forEach(t -> assertTrue(t instanceof TopologyChangedException));
+            assertEquals(secondSubClusterSize, MockPS.receivedCloseErrors.size());
+            MockPS.receivedCloseErrors.forEach(t -> assertTrue(t instanceof TopologyChangedException));
 
             try {
                 jobRef[0].getFuture().get(30, TimeUnit.SECONDS);

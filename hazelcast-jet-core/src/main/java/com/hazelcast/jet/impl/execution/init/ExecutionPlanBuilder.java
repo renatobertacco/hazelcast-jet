@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,16 +18,15 @@ package com.hazelcast.jet.impl.execution.init;
 
 import com.hazelcast.internal.cluster.MemberInfo;
 import com.hazelcast.internal.cluster.impl.MembersView;
-import com.hazelcast.jet.JetException;
+import com.hazelcast.jet.JetInstance;
+import com.hazelcast.jet.config.EdgeConfig;
+import com.hazelcast.jet.config.JobConfig;
 import com.hazelcast.jet.core.DAG;
 import com.hazelcast.jet.core.Edge;
-import com.hazelcast.jet.JetInstance;
 import com.hazelcast.jet.core.ProcessorMetaSupplier;
 import com.hazelcast.jet.core.ProcessorSupplier;
 import com.hazelcast.jet.core.TopologyChangedException;
 import com.hazelcast.jet.core.Vertex;
-import com.hazelcast.jet.config.EdgeConfig;
-import com.hazelcast.jet.config.JobConfig;
 import com.hazelcast.jet.impl.execution.init.Contexts.MetaSupplierCtx;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
@@ -83,7 +82,8 @@ public final class ExecutionPlanBuilder {
                     e -> vertexIdMap.get(e.getDestName()), isJobDistributed);
             final ILogger logger = nodeEngine.getLogger(String.format("%s.%s#ProcessorMetaSupplier",
                     metaSupplier.getClass().getName(), vertex.getName()));
-            metaSupplier.init(new MetaSupplierCtx(instance, logger, totalParallelism, localParallelism));
+            metaSupplier.init(new MetaSupplierCtx(instance, logger, vertex.getName(),
+                    localParallelism, totalParallelism));
 
             Function<Address, ProcessorSupplier> procSupplierFn = metaSupplier.get(addresses);
             int procIdxOffset = 0;
@@ -91,7 +91,8 @@ public final class ExecutionPlanBuilder {
                 final ProcessorSupplier processorSupplier = procSupplierFn.apply(e.getKey().getAddress());
                 checkSerializable(processorSupplier, "ProcessorSupplier in vertex '" + vertex.getName() + '\'');
                 final VertexDef vertexDef = new VertexDef(
-                        vertexId, vertex.getName(), processorSupplier, procIdxOffset, localParallelism);
+                        vertexId, vertex.getName(), processorSupplier, procIdxOffset, localParallelism, totalParallelism
+                );
                 vertexDef.addInboundEdges(inbound);
                 vertexDef.addOutboundEdges(outbound);
                 e.getValue().addVertex(vertexDef);
@@ -109,16 +110,9 @@ public final class ExecutionPlanBuilder {
     }
 
     private static int determineParallelism(Vertex vertex, int preferredLocalParallelism, int defaultParallelism) {
-        if (!Vertex.isValidLocalParallelism(preferredLocalParallelism)) {
-            throw new JetException(String.format(
-                    "ProcessorMetaSupplier in vertex %s specifies preferred local parallelism of %d",
-                    vertex.getName(), preferredLocalParallelism));
-        }
         int localParallelism = vertex.getLocalParallelism();
-        if (!Vertex.isValidLocalParallelism(localParallelism)) {
-            throw new JetException(String.format(
-                    "Vertex %s specifies local parallelism of %d", vertex.getName(), localParallelism));
-        }
+        Vertex.checkLocalParallelism(preferredLocalParallelism);
+        Vertex.checkLocalParallelism(localParallelism);
         return localParallelism != LOCAL_PARALLELISM_USE_DEFAULT
                         ? localParallelism
              : preferredLocalParallelism != LOCAL_PARALLELISM_USE_DEFAULT

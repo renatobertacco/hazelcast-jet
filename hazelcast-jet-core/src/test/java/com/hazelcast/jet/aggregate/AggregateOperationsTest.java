@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -97,7 +97,7 @@ public class AggregateOperationsTest {
 
     @Test
     public void when_summingToDouble() {
-        validateOp(summingDouble(Double::doubleValue), DoubleAccumulator::get,
+        validateOp(summingDouble(Double::doubleValue), DoubleAccumulator::finish,
                 0.5, 1.5, 0.5, 2.0, 2.0);
     }
 
@@ -200,7 +200,7 @@ public class AggregateOperationsTest {
         AggregateOperation1<Long, ?, Tuple2<Long, Long>> composite =
                 allOf(AggregateOperation
                                 .withCreate(LongAccumulator::new)
-                                .<Long>andAccumulate(LongAccumulator::add)
+                                .<Long>andAccumulate(LongAccumulator::addAllowingOverflow)
                                 .andFinish(LongAccumulator::get),
                         summingLong(x -> x));
         assertNull(composite.combineFn());

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import com.hazelcast.cache.journal.EventJournalCacheEvent;
 import com.hazelcast.core.EntryEventType;
 import com.hazelcast.jet.function.DistributedFunction;
 import com.hazelcast.jet.function.DistributedPredicate;
+import com.hazelcast.jet.pipeline.Sources;
 import com.hazelcast.map.journal.EventJournalMapEvent;
 
 import java.util.AbstractMap.SimpleImmutableEntry;
@@ -69,6 +70,17 @@ public final class Util {
      */
     public static <K, V> DistributedFunction<EventJournalMapEvent<K, V>, Entry<K, V>> mapEventToEntry() {
         return e -> entry(e.getKey(), e.getNewValue());
+    }
+
+    /**
+     * Returns a projection that extracts the new value from a {@link
+     * EventJournalMapEvent}.
+     *
+     * @see Sources#mapJournal
+     * @see Sources#remoteMapJournal
+     */
+    public static <K, V> DistributedFunction<EventJournalMapEvent<K, V>, V> mapEventNewValue() {
+        return EventJournalMapEvent::getNewValue;
     }
 
     /**

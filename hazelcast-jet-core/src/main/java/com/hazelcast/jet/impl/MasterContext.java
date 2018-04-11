@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,9 +37,9 @@ import com.hazelcast.jet.impl.operation.CompleteExecutionOperation;
 import com.hazelcast.jet.impl.operation.InitExecutionOperation;
 import com.hazelcast.jet.impl.operation.SnapshotOperation;
 import com.hazelcast.jet.impl.operation.StartExecutionOperation;
+import com.hazelcast.jet.impl.util.CompletionToken;
 import com.hazelcast.jet.impl.util.ExceptionUtil;
 import com.hazelcast.jet.impl.util.NonCompletableFuture;
-import com.hazelcast.jet.impl.util.CompletionToken;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
 import com.hazelcast.spi.ExecutionService;
@@ -65,12 +65,14 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import static com.hazelcast.jet.core.Edge.between;
 import static com.hazelcast.jet.core.JobStatus.COMPLETED;
 import static com.hazelcast.jet.core.JobStatus.FAILED;
 import static com.hazelcast.jet.core.JobStatus.NOT_STARTED;
 import static com.hazelcast.jet.core.JobStatus.RESTARTING;
 import static com.hazelcast.jet.core.JobStatus.RUNNING;
 import static com.hazelcast.jet.core.JobStatus.STARTING;
+import static com.hazelcast.jet.core.processor.Processors.mapP;
 import static com.hazelcast.jet.core.processor.SourceProcessors.readMapP;
 import static com.hazelcast.jet.function.DistributedFunctions.entryKey;
 import static com.hazelcast.jet.impl.SnapshotRepository.snapshotDataMapName;
@@ -80,9 +82,9 @@ import static com.hazelcast.jet.impl.execution.init.ExecutionPlanBuilder.createE
 import static com.hazelcast.jet.impl.util.ExceptionUtil.isTopologicalFailure;
 import static com.hazelcast.jet.impl.util.ExceptionUtil.peel;
 import static com.hazelcast.jet.impl.util.ExceptionUtil.withTryCatch;
+import static com.hazelcast.jet.impl.util.Util.getJetInstance;
 import static com.hazelcast.jet.impl.util.Util.idToString;
 import static com.hazelcast.jet.impl.util.Util.jobAndExecutionId;
-import static com.hazelcast.query.TruePredicate.truePredicate;
 import static java.util.Collections.emptyList;
 import static java.util.stream.Collectors.partitioningBy;
 import static java.util.stream.Collectors.toList;
@@ -169,7 +171,14 @@ public class MasterContext {
             return;
         }
 
-        DAG dag = deserializeDAG();
+        DAG dag;
+        try {
+            dag = deserializeDAG();
+        } catch (Exception e) {
+            logger.warning("DAG deserialization failed", e);
+            finalizeJob(e);
+            return;
+        }
         // save a copy of the vertex list, because it is going to change
         vertices = new HashSet<>();
         dag.iterator().forEachRemaining(vertices::add);
@@ -186,7 +195,7 @@ public class MasterContext {
                         + snapshotIdToRestore);
                 rewriteDagWithSnapshotRestore(dag, snapshotIdToRestore);
             } else {
-                logger.warning("No usable snapshot for " + jobIdString() + " found.");
+                logger.info("No previous snapshot for " + jobIdString() + " found.");
             }
             if (lastStartedSnapshot != null) {
                 lastSnapshotId = lastStartedSnapshot;
@@ -196,13 +205,15 @@ public class MasterContext {
         MembersView membersView = getMembersView();
         ClassLoader previousCL = swapContextClassLoader(coordinationService.getClassLoader(jobId));
         try {
+            int defaultLocalParallelism = getJetInstance(nodeEngine).getConfig().getInstanceConfig()
+                                                                    .getCooperativeThreadCount();
             logger.info("Start executing " + jobIdString() + ", status " + jobStatus()
-                    + "\n" + dag);
+                    + "\n" + dag.toString(defaultLocalParallelism));
             logger.fine("Building execution plan for " + jobIdString());
             executionPlanMap = createExecutionPlans(nodeEngine, membersView, dag, getJobConfig(), lastSnapshotId);
         } catch (Exception e) {
             logger.severe("Exception creating execution plan for " + jobIdString(), e);
-            onCompleteStepCompleted(e);
+            finalizeJob(e);
             return;
         } finally {
             Thread.currentThread().setContextClassLoader(previousCL);
@@ -211,7 +222,8 @@ public class MasterContext {
         logger.fine("Built execution plans for " + jobIdString());
         Set<MemberInfo> participants = executionPlanMap.keySet();
         Function<ExecutionPlan, Operation> operationCtor = plan ->
-                new InitExecutionOperation(jobId, executionId, membersView.getVersion(), participants, plan);
+                new InitExecutionOperation(jobId, executionId, membersView.getVersion(), participants,
+                        nodeEngine.getSerializationService().toData(plan));
         invoke(operationCtor, this::onInitStepCompleted, null);
     }
 
@@ -225,13 +237,19 @@ public class MasterContext {
             // Processor.finishSnapshotRestore() method is always called on all vertices in
             // a job which is restored from a snapshot.
             String mapName = snapshotDataMapName(jobId, snapshotId, vertex.getName());
-            Vertex readSnapshotVertex = dag.newVertex("__read_snapshot." + vertex.getName(),
-                    readMapP(mapName, truePredicate(), projection));
+            Vertex readSnapshotVertex = dag.newVertex("__snapshot_read." + vertex.getName(), readMapP(mapName));
+            // We need a separate mapping vertex and can't use readMapP's projectionFn:
+            // the projection will cause key/value deserialization on partition thread, which doesn't have job's
+            // class loader. If the key/value uses a custom object, it will fail. For example, StreamKafkaP uses
+            // TopicPartition as the key or a custom processor can use custom key.
+            Vertex mapSnapshotVertex = dag.newVertex("__snapshot_map_." + vertex.getName(), mapP(projection));
 
             readSnapshotVertex.localParallelism(vertex.getLocalParallelism());
+            mapSnapshotVertex.localParallelism(vertex.getLocalParallelism());
 
             int destOrdinal = dag.getInboundEdges(vertex.getName()).size();
-            dag.edge(new SnapshotRestoreEdge(readSnapshotVertex, vertex, destOrdinal));
+            dag.edge(between(readSnapshotVertex, mapSnapshotVertex).isolated())
+               .edge(new SnapshotRestoreEdge(mapSnapshotVertex, vertex, destOrdinal));
         }
     }
 
@@ -248,7 +266,7 @@ public class MasterContext {
 
         if (cancellationToken.isCompleted()) {
             logger.fine("Skipping init job " + idToString(jobId) + ": is already cancelled.");
-            onCompleteStepCompleted(new CancellationException());
+            finalizeJob(new CancellationException());
             return false;
         }
 
@@ -522,36 +540,33 @@ public class MasterContext {
         }
 
         Function<ExecutionPlan, Operation> operationCtor = plan -> new CompleteExecutionOperation(executionId, finalError);
-        invoke(operationCtor, responses -> onCompleteStepCompleted(error), null);
+        invoke(operationCtor, responses -> finalizeJob(error), null);
     }
 
     // Called as callback when all CompleteOperation invocations are done
-    private void onCompleteStepCompleted(@Nullable Throwable failure) {
+    private void finalizeJob(@Nullable Throwable failure) {
         if (assertJobNotAlreadyDone(failure)) {
             return;
         }
 
         completeVertices(failure);
 
-        long completionTime = System.currentTimeMillis();
         if (shouldRestart(failure)) {
             scheduleRestart();
             return;
         }
 
-        long elapsed = completionTime - jobStartTime;
+        long elapsed = System.currentTimeMillis() - jobStartTime;
         if (isSuccess(failure)) {
-            logger.info("Execution of " + jobIdString() + " completed in " + elapsed + " ms");
+            logger.info(String.format("Execution of %s completed in %,d ms", jobIdString(), elapsed));
         } else {
-            logger.warning("Execution of " + jobIdString()
-                    + " failed in " + elapsed + " ms", failure);
+            logger.warning(String.format("Execution of %s failed after %,d ms", jobIdString(), elapsed), failure);
         }
 
         try {
-            coordinationService.completeJob(this, executionId, completionTime, failure);
+            coordinationService.completeJob(this, executionId, System.currentTimeMillis(), failure);
         } catch (RuntimeException e) {
-            logger.warning("Completion of " + jobIdString()
-                    + " failed in " + elapsed + " ms", failure);
+            logger.warning("Completion of " + jobIdString() + " failed", failure);
         } finally {
             setFinalResult(failure);
         }
@@ -575,7 +590,7 @@ public class MasterContext {
         if (vertices != null) {
             for (Vertex vertex : vertices) {
                 try {
-                    vertex.getMetaSupplier().complete(failure);
+                    vertex.getMetaSupplier().close(failure);
                 } catch (Exception e) {
                     logger.severe(jobIdString()
                             + " encountered an exception in ProcessorMetaSupplier.complete(), ignoring it", e);

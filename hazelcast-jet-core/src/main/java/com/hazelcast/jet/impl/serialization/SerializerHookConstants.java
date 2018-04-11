@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,9 +48,11 @@ public final class SerializerHookConstants {
     public static final int SNAPSHOT_BARRIER = -318;
     public static final int BROADCAST_ENTRY = -319;
     public static final int BROADCAST_KEY_REFERENCE = -320;
-    public static final int SESSION = -321;
+    public static final int WINDOW_RESULT = -321;
     public static final int HASH_MAP = -322;
     public static final int HASH_SET = -323;
+    public static final int JET_EVENT = -324;
+    public static final int TIMESTAMPED_ITEM = -325;
 
     // reserved for hadoop module: -380 to -390
 

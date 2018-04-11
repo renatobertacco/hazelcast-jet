@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,17 @@ import javax.annotation.Nonnull;
 
 /**
  * Specialization of {@link AggregateOperation} to the "arity-3" case with
- * two data stream being aggregated over.
+ * three data streams being aggregated over. This example constructs an operation
+ * that sums up {@code long} values from three streams:
+ *
+ * <pre>{@code
+ * AggregateOperation3<Long, Long, Long, LongAccumulator, Long> aggrOp = AggregateOperation
+ *     .withCreate(LongAccumulator::new)
+ *     .<Long>andAccumulate0(LongAccumulator::add)
+ *     .<Long>andAccumulate1(LongAccumulator::add)
+ *     .<Long>andAccumulate2(LongAccumulator::add)
+ *     .andFinish(LongAccumulator::get);
+ * }</pre>
  *
  * @param <T0> the type of item in stream-0
  * @param <T1> the type of item in stream-1
@@ -53,6 +63,33 @@ public interface AggregateOperation3<T0, T1, T2, A, R> extends AggregateOperatio
      */
     @Nonnull
     DistributedBiConsumer<? super A, ? super T2> accumulateFn2();
+
+    /**
+     * Returns a copy of this aggregate operation, but with the {@code
+     * accumulate} primitive at index 0 replaced with the one supplied here.
+     */
+    @Nonnull
+    <T0_NEW> AggregateOperation3<T0_NEW, T1, T2, A, R> withAccumulateFn0(
+            @Nonnull DistributedBiConsumer<? super A, ? super T0_NEW> newAccFn0
+    );
+
+    /**
+     * Returns a copy of this aggregate operation, but with the {@code
+     * accumulate} primitive at index 1 replaced with the one supplied here.
+     */
+    @Nonnull
+    <T1_NEW> AggregateOperation3<T0, T1_NEW, T2, A, R> withAccumulateFn1(
+            @Nonnull DistributedBiConsumer<? super A, ? super T1_NEW> newAccFn1
+    );
+
+    /**
+     * Returns a copy of this aggregate operation, but with the {@code
+     * accumulate} primitive at index 2 replaced with the one supplied here.
+     */
+    @Nonnull
+    <T2_NEW> AggregateOperation3<T0, T1, T2_NEW, A, R> withAccumulateFn2(
+            @Nonnull DistributedBiConsumer<? super A, ? super T2_NEW> newAccFn2
+    );
 
     // Override with a narrowed return type
     @Nonnull @Override

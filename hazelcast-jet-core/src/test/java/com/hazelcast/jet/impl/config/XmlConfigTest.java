@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -44,7 +44,7 @@ public class XmlConfigTest {
     private static final String TEST_XML_1 = "hazelcast-jet-test.xml";
     private static final String TEST_XML_2 = "hazelcast-jet-member-test.xml";
     private static final String TEST_XML_2_GROUP_NAME = "imdg";
-    private static final String WORLDS_MOST_COMMON_PASSWORD = "123456";
+    private static final String INSTANCE_NAME = "my-instance";
 
     @Test
     public void when_noConfigSpecified_usesDefaultConfig() {
@@ -148,14 +148,14 @@ public class XmlConfigTest {
         Properties properties = new Properties();
         properties.put(XmlJetConfigLocator.HAZELCAST_MEMBER_CONFIG_PROPERTY, "classpath:${my.filename}");
         properties.put("my.filename", TEST_XML_2);
-        properties.put("imdg.pass", WORLDS_MOST_COMMON_PASSWORD);
+        properties.put("imdg.instance.name", INSTANCE_NAME);
 
         // When
         JetConfig jetConfig = XmlJetConfigBuilder.getConfig(properties);
 
         // Then
         assertXmlMemberConfig(jetConfig.getHazelcastConfig());
-        assertThat(jetConfig.getHazelcastConfig().getGroupConfig().getPassword(), equalTo(WORLDS_MOST_COMMON_PASSWORD));
+        assertThat(jetConfig.getHazelcastConfig().getInstanceName(), equalTo(INSTANCE_NAME));
     }
 
     @Test

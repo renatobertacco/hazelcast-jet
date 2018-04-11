@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,6 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.function.Consumer;
 import java.util.function.Function;
 
 import static com.hazelcast.jet.impl.util.ExceptionUtil.sneakyThrow;
@@ -300,6 +299,10 @@ public abstract class AbstractProcessor implements Processor {
         return logger;
     }
 
+    protected final Outbox getOutbox() {
+        return outbox;
+    }
+
     /**
      * Offers the item to the outbox bucket at the supplied ordinal.
      * <p>
@@ -341,14 +344,13 @@ public abstract class AbstractProcessor implements Processor {
      * returned, the call must be retried later with the same (or equal) item.
      */
     @CheckReturnValue
-    protected final boolean tryEmit(int[] ordinals, @Nonnull Object item) {
+    protected final boolean tryEmit(@Nonnull int[] ordinals, @Nonnull Object item) {
         return outbox.offer(ordinals, item);
     }
 
     /**
      * Obtains items from the traverser and offers them to the outbox's buckets
-     * identified in the supplied array. Calls the {@code onEmit} callback (if
-     * supplied) for each emitted item. If the outbox refuses an item, it backs
+     * identified in the supplied array. If the outbox refuses an item, it backs
      * off and returns {@code false}.
      * <p>
      * Emitted items should not be subsequently mutated because the same
@@ -364,12 +366,9 @@ public abstract class AbstractProcessor implements Processor {
      *
      * @param ordinals ordinals of the target bucket
      * @param traverser traverser over items to emit
-     * @param onEmit optional callback that gets notified of each emitted item
      * @return whether the traverser has been exhausted
      */
-    protected final <E> boolean emitFromTraverser(
-            @Nonnull int[] ordinals, @Nonnull Traverser<E> traverser, @Nullable Consumer<? super E> onEmit
-    ) {
+    protected final <E> boolean emitFromTraverser(@Nonnull int[] ordinals, @Nonnull Traverser<E> traverser) {
         E item;
         if (pendingItem != null) {
             item = (E) pendingItem;
@@ -378,11 +377,7 @@ public abstract class AbstractProcessor implements Processor {
             item = traverser.next();
         }
         for (; item != null; item = traverser.next()) {
-            if (tryEmit(ordinals, item)) {
-                if (onEmit != null) {
-                    onEmit.accept(item);
-                }
-            } else {
+            if (!tryEmit(ordinals, item)) {
                 pendingItem = item;
                 return false;
             }
@@ -392,8 +387,7 @@ public abstract class AbstractProcessor implements Processor {
 
     /**
      * Obtains items from the traverser and offers them to the outbox's buckets
-     * identified in the supplied array. Calls the {@code onEmit} callback (if
-     * supplied) for each emitted item. If the outbox refuses an item, it backs
+     * identified in the supplied array. If the outbox refuses an item, it backs
      * off and returns {@code false}.
      * <p>
      * Emitted items should not be subsequently mutated because the same
@@ -409,12 +403,9 @@ public abstract class AbstractProcessor implements Processor {
      *
      * @param ordinal ordinal of the target bucket
      * @param traverser traverser over items to emit
-     * @param onEmit optional callback that gets notified of each emitted item
      * @return whether the traverser has been exhausted
      */
-    protected final <E> boolean emitFromTraverser(
-            int ordinal, @Nonnull Traverser<E> traverser, @Nullable Consumer<? super E> onEmit
-    ) {
+    protected final <E> boolean emitFromTraverser(int ordinal, @Nonnull Traverser<E> traverser) {
         E item;
         if (pendingItem != null) {
             item = (E) pendingItem;
@@ -423,11 +414,7 @@ public abstract class AbstractProcessor implements Processor {
             item = traverser.next();
         }
         for (; item != null; item = traverser.next()) {
-            if (tryEmit(ordinal, item)) {
-                if (onEmit != null) {
-                    onEmit.accept(item);
-                }
-            } else {
+            if (!tryEmit(ordinal, item)) {
                 pendingItem = item;
                 return false;
             }
@@ -436,35 +423,11 @@ public abstract class AbstractProcessor implements Processor {
     }
 
     /**
-     * Convenience for {@link #emitFromTraverser(int, Traverser, Consumer)}
-     * which emits to all ordinals.
-     */
-    protected final <E> boolean emitFromTraverser(@Nonnull Traverser<E> traverser, @Nullable Consumer<? super E> onEmit) {
-        return emitFromTraverser(-1, traverser, onEmit);
-    }
-
-    /**
-     * Convenience for {@link #emitFromTraverser(int, Traverser, Consumer)}
+     * Convenience for {@link #emitFromTraverser(int, Traverser)}
      * which emits to all ordinals.
      */
     protected final boolean emitFromTraverser(@Nonnull Traverser<?> traverser) {
-        return emitFromTraverser(-1, traverser, null);
-    }
-
-    /**
-     * Convenience for {@link #emitFromTraverser(int, Traverser, Consumer)}
-     * which emits to the specified ordinal.
-     */
-    protected final boolean emitFromTraverser(int ordinal, @Nonnull Traverser<?> traverser) {
-        return emitFromTraverser(ordinal, traverser, null);
-    }
-
-    /**
-     * Convenience for {@link #emitFromTraverser(int[], Traverser, Consumer)}
-     * which emits to the specified ordinals.
-     */
-    protected final boolean emitFromTraverser(int[] ordinals, @Nonnull Traverser<?> traverser) {
-        return emitFromTraverser(ordinals, traverser, null);
+        return emitFromTraverser(-1, traverser);
     }
 
     /**
@@ -546,7 +509,7 @@ public abstract class AbstractProcessor implements Processor {
     protected final <T, R> FlatMapper<T, R> flatMapper(
             @Nonnull Function<? super T, ? extends Traverser<? extends R>> mapper
     ) {
-        return flatMapper(null, mapper);
+        return new FlatMapper<>(null, mapper);
     }
 
     /**
@@ -555,7 +518,7 @@ public abstract class AbstractProcessor implements Processor {
      */
     @Nonnull
     protected final <T, R> FlatMapper<T, R> flatMapper(
-            int[] ordinals, @Nonnull Function<? super T, ? extends Traverser<? extends R>> mapper
+            @Nonnull int[] ordinals, @Nonnull Function<? super T, ? extends Traverser<? extends R>> mapper
     ) {
         return new FlatMapper<>(ordinals, mapper);
     }
@@ -570,7 +533,7 @@ public abstract class AbstractProcessor implements Processor {
      * supplies a {@code mapper} which takes an item and returns a traverser
      * over all output items that should be emitted. The {@link
      * #tryProcess(Object)} method obtains and passes the traverser to {@link
-     * #emitFromTraverser(int, Traverser, Consumer)}.
+     * #emitFromTraverser(int, Traverser)}.
      *
      * Example:
      * <pre>
@@ -593,7 +556,8 @@ public abstract class AbstractProcessor implements Processor {
         private final Function<? super T, ? extends Traverser<? extends R>> mapper;
         private Traverser<? extends R> outputTraverser;
 
-        FlatMapper(int[] outputOrdinals, @Nonnull Function<? super T, ? extends Traverser<? extends R>> mapper) {
+        private FlatMapper(@Nullable int[] outputOrdinals,
+                           @Nonnull Function<? super T, ? extends Traverser<? extends R>> mapper) {
             this.outputOrdinals = outputOrdinals;
             this.mapper = mapper;
         }
@@ -619,7 +583,7 @@ public abstract class AbstractProcessor implements Processor {
 
         private boolean emit() {
             return outputOrdinals != null
-                    ? emitFromTraverser(outputOrdinals, outputTraverser, null)
+                    ? emitFromTraverser(outputOrdinals, outputTraverser)
                     : emitFromTraverser(outputTraverser);
         }
     }

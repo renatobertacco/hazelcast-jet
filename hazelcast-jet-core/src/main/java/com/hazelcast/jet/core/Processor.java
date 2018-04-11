@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,11 +17,11 @@
 package com.hazelcast.jet.core;
 
 import com.hazelcast.jet.JetException;
-import com.hazelcast.jet.JetInstance;
 import com.hazelcast.jet.config.ProcessingGuarantee;
 import com.hazelcast.logging.ILogger;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 
 /**
  * When Jet executes a DAG, it creates one or more instances of {@code
@@ -57,19 +57,19 @@ public interface Processor {
      * <p>
      * A cooperative processor should also not attempt any blocking operations,
      * such as I/O operations, waiting for locks/semaphores or sleep
-     * operations. Violations to this rule will manifest themselves as less
-     * than 100% CPU usage under maximum load. The processor should also return
-     * as soon as an item is rejected by the outbox (that is when the {@link
-     * Outbox#offer(Object) offer()} method returns {@code false}).
+     * operations. Violations of this rule will manifest as less than 100% CPU
+     * usage under maximum load. The processor must also return as soon as the
+     * outbox rejects an item (that is when the {@link Outbox#offer(Object)
+     * offer()} method returns {@code false}).
      * <p>
      * If this processor declares itself cooperative, it will share a thread
      * with other cooperative processors. Otherwise it will run in a dedicated
      * Java thread.
      * <p>
-     * Jet prefers cooperative processors because they result in greater overall
-     * throughput. A processor should be non-cooperative only if it involves
-     * blocking operations, which would cause all other processors on the same
-     * shared thread to starve.
+     * Jet prefers cooperative processors because they result in a greater
+     * overall throughput. A processor should be non-cooperative only if it
+     * involves blocking operations, which would cause all other processors on
+     * the same shared thread to starve.
      * <p>
      * Processor instances on single vertex are allowed to return different
      * value, but single processor instance must return constant value.
@@ -184,7 +184,7 @@ public interface Processor {
     }
 
     /**
-     * Stores its snapshotted state by adding items to the outbox's {@link
+     * Stores its snapshotted state by adding items to the outbox's {@linkplain
      * Outbox#offerToSnapshot(Object, Object) snapshot bucket}. If it returns
      * {@code false}, it will be called again before proceeding to call any
      * other method.
@@ -194,6 +194,11 @@ public interface Processor {
      * exhausted, it may also be called between {@link #complete()} calls. Once
      * {@code complete()} returns {@code true}, this method won't be called
      * anymore.
+     * <p>
+     * <b>Note:</b> if you returned from {@link #complete()} because some of
+     * the {@code Outbox.offer()} method returned false, you need to make sure
+     * to re-offer the pending item in this method before offering any items to
+     * {@link Outbox#offerToSnapshot}.
      * <p>
      * The default implementation takes no action and returns {@code true}.
      */
@@ -231,16 +236,31 @@ public interface Processor {
     }
 
     /**
+     * Called after the execution has finished on all members - successfully or
+     * not, before {@link ProcessorSupplier#close} is called. If the execution
+     * was <em>aborted</em> due to a member leaving the cluster it is called
+     * immediately. Int this case, it can happen that the job is still running
+     * on some other member (but not on this member).
+     * <p>
+     * After this method no other methods are called.
+     * <p>
+     * If this method throws an exception, it will be logged and ignored; it
+     * won't be reported as a job failure.
+     * <p>
+     * Note: this method can be called even if {@link #init} method was not
+     * called yet in case the job fails during the init phase.
+
+     * @param error the exception (if any) that caused the job to fail;
+     *              {@code null} in the case of successful job completion
+     */
+    default void close(@Nullable Throwable error) throws Exception {
+    }
+
+    /**
      * Context passed to the processor in the
      * {@link #init(Outbox, Context) init()} call.
      */
-    interface Context {
-
-        /**
-         * Returns the current Jet instance
-         */
-        @Nonnull
-        JetInstance jetInstance();
+    interface Context extends ProcessorSupplier.Context {
 
         /**
          *  Return a logger for the processor
@@ -251,14 +271,10 @@ public interface Processor {
         /**
          * Returns the index of the processor among all the processors created for
          * this vertex on all nodes: its unique cluster-wide index.
+         * <p>
+         * The index values will be in the range of {@code [0...totalParallelism-1]}.
          */
         int globalProcessorIndex();
-
-        /***
-         * Returns the name of the vertex associated with this processor.
-         */
-        @Nonnull
-        String vertexName();
 
         /**
          * Returns true, if snapshots will be saved for this job.

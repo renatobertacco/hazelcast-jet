@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -46,9 +46,9 @@ public class TopologyChangeDuringJobSubmissionTest extends JetTestSupport {
 
     @Before
     public void setup() {
-        MockPS.completeCount.set(0);
+        MockPS.closeCount.set(0);
         MockPS.initCount.set(0);
-        MockPS.completeErrors.clear();
+        MockPS.receivedCloseErrors.clear();
 
         StuckProcessor.proceedLatch = new CountDownLatch(1);
         StuckProcessor.executionStarted = new CountDownLatch(PARALLELISM);

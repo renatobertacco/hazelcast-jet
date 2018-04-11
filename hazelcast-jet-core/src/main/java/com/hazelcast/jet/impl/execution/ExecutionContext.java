@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -135,14 +135,23 @@ public class ExecutionContext {
         assert executionFuture == null || executionFuture.isDone()
                 : "If execution was begun, then completeExecution() should not be called before execution is done.";
 
-        procSuppliers.forEach(s -> {
+        for (Processor processor : processors) {
             try {
-                s.complete(error);
+                processor.close(error);
+            } catch (Throwable e) {
+                logger.severe(jobAndExecutionId(jobId, executionId)
+                        + " encountered an exception in Processor.close(), ignoring it", e);
+            }
+        }
+
+        for (ProcessorSupplier s : procSuppliers) {
+            try {
+                s.close(error);
             } catch (Throwable e) {
                 logger.severe(jobAndExecutionId(jobId, executionId)
                         + " encountered an exception in ProcessorSupplier.complete(), ignoring it", e);
             }
-        });
+        }
         MetricsRegistry metricsRegistry = ((NodeEngineImpl) nodeEngine).getMetricsRegistry();
         processors.forEach(metricsRegistry::deregister);
     }

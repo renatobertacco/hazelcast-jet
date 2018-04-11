@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ package com.hazelcast.jet.core;
 
 import com.hazelcast.jet.Traverser;
 import com.hazelcast.jet.core.AbstractProcessor.FlatMapper;
-import com.hazelcast.jet.core.TestProcessors.ProcessorThatFailsInInit;
+import com.hazelcast.jet.core.TestProcessors.MockP;
 import com.hazelcast.jet.core.test.TestInbox;
 import com.hazelcast.jet.core.test.TestOutbox;
 import com.hazelcast.jet.impl.util.Util;
@@ -112,7 +112,7 @@ public class AbstractProcessorTest {
 
     @Test(expected = UnknownHostException.class)
     public void when_customInitThrows_then_initRethrows() {
-        new ProcessorThatFailsInInit(new UnknownHostException())
+        new MockP().setInitError(new UnknownHostException())
                 .init(mock(Outbox.class), mock(Processor.Context.class));
     }
 

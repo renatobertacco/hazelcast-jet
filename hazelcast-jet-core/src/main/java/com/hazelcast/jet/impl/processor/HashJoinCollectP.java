@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,9 +24,9 @@ import java.util.Map;
 import java.util.function.Function;
 
 /**
- * Implements the "collector" stage in a hash join transformation. This
- * stage collects the entire joined stream into a hashmap and then
- * broadcasts it to all local second-stage processors.
+ * Implements the "collector" pipeline in a hash join transformation. This
+ * pipeline collects the entire joined stream into a hashmap and then
+ * broadcasts it to all local second-pipeline processors.
  */
 public class HashJoinCollectP<K, E, V> extends AbstractProcessor {
     private final Map<K, V> map = new HashMap<>();
@@ -46,7 +46,8 @@ public class HashJoinCollectP<K, E, V> extends AbstractProcessor {
         V value = projectFn.apply(e);
         V previous = map.put(key, value);
         if (previous != null) {
-            throw new IllegalStateException("Duplicate values for key " + key + ": " + previous + " and " + value);
+            throw new IllegalStateException("Duplicate values for key '" + key + "': '" + previous + "' and '" + value
+                    + "'");
         }
         return true;
     }

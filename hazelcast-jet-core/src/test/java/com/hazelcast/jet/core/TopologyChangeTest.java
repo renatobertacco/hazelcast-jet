@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,10 +31,10 @@ import com.hazelcast.jet.impl.JetService;
 import com.hazelcast.jet.impl.JobRepository;
 import com.hazelcast.jet.impl.JobResult;
 import com.hazelcast.jet.impl.MasterContext;
-import com.hazelcast.jet.impl.execution.init.ExecutionPlan;
 import com.hazelcast.jet.impl.execution.init.JetInitDataSerializerHook;
 import com.hazelcast.jet.impl.operation.InitExecutionOperation;
 import com.hazelcast.test.HazelcastParametersRunnerFactory;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -57,6 +57,7 @@ import static com.hazelcast.jet.core.JobStatus.STARTING;
 import static com.hazelcast.jet.impl.execution.init.JetInitDataSerializerHook.INIT_EXECUTION_OP;
 import static com.hazelcast.jet.impl.execution.init.JetInitDataSerializerHook.START_EXECUTION_OP;
 import static com.hazelcast.test.PacketFiltersUtil.dropOperationsBetween;
+import static com.hazelcast.test.PacketFiltersUtil.rejectOperationsBetween;
 import static com.hazelcast.test.PacketFiltersUtil.resetPacketFiltersFrom;
 import static java.util.Collections.singletonList;
 import static org.hamcrest.Matchers.empty;
@@ -67,7 +68,6 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import static org.mockito.Mockito.mock;
 
 @RunWith(Parameterized.class)
 @Parameterized.UseParametersRunnerFactory(HazelcastParametersRunnerFactory.class)
@@ -106,9 +106,9 @@ public class TopologyChangeTest extends JetTestSupport {
             }
         }
 
-        MockPS.completeCount.set(0);
+        MockPS.closeCount.set(0);
         MockPS.initCount.set(0);
-        MockPS.completeErrors.clear();
+        MockPS.receivedCloseErrors.clear();
 
         StuckProcessor.proceedLatch = new CountDownLatch(1);
         StuckProcessor.executionStarted = new CountDownLatch(nodeCount * PARALLELISM);
@@ -143,8 +143,8 @@ public class TopologyChangeTest extends JetTestSupport {
         assertEquals(nodeCount, MockPS.initCount.get());
 
         assertTrueEventually(() -> {
-            assertEquals(nodeCount, MockPS.completeCount.get());
-            assertThat(MockPS.completeErrors, empty());
+            assertEquals(nodeCount, MockPS.closeCount.get());
+            assertThat(MockPS.receivedCloseErrors, empty());
         });
     }
 
@@ -165,8 +165,8 @@ public class TopologyChangeTest extends JetTestSupport {
         assertEquals(nodeCount, MockPS.initCount.get());
 
         assertTrueEventually(() -> {
-            assertEquals(nodeCount, MockPS.completeCount.get());
-            assertThat(MockPS.completeErrors, empty());
+            assertEquals(nodeCount, MockPS.closeCount.get());
+            assertThat(MockPS.receivedCloseErrors, empty());
         });
     }
 
@@ -189,10 +189,10 @@ public class TopologyChangeTest extends JetTestSupport {
         assertEquals(count, MockPS.initCount.get());
 
         assertTrueEventually(() -> {
-            assertEquals(count, MockPS.completeCount.get());
-            assertEquals(nodeCount, MockPS.completeErrors.size());
-            for (int i = 0; i < MockPS.completeErrors.size(); i++) {
-                Throwable error = MockPS.completeErrors.get(i);
+            assertEquals(count, MockPS.closeCount.get());
+            assertEquals(nodeCount, MockPS.receivedCloseErrors.size());
+            for (int i = 0; i < MockPS.receivedCloseErrors.size(); i++) {
+                Throwable error = MockPS.receivedCloseErrors.get(i);
                 assertTrue(error instanceof TopologyChangedException
                         || error instanceof HazelcastInstanceNotActiveException);
             }
@@ -270,10 +270,10 @@ public class TopologyChangeTest extends JetTestSupport {
         assertEquals(count, MockPS.initCount.get());
 
         assertTrueEventually(() -> {
-            assertEquals(count, MockPS.completeCount.get());
-            assertEquals(nodeCount, MockPS.completeErrors.size());
-            for (int i = 0; i < MockPS.completeErrors.size(); i++) {
-                Throwable error = MockPS.completeErrors.get(i);
+            assertEquals(count, MockPS.closeCount.get());
+            assertEquals(nodeCount, MockPS.receivedCloseErrors.size());
+            for (int i = 0; i < MockPS.receivedCloseErrors.size(); i++) {
+                Throwable error = MockPS.receivedCloseErrors.get(i);
                 assertTrue(error instanceof TopologyChangedException
                         || error instanceof HazelcastInstanceNotActiveException);
             }
@@ -362,7 +362,7 @@ public class TopologyChangeTest extends JetTestSupport {
             assertClusterSizeEventually(NODE_COUNT + 1, instance.getHazelcastInstance());
         }
 
-        dropOperationsBetween(instances[0].getHazelcastInstance(), instances[2].getHazelcastInstance(),
+        rejectOperationsBetween(instances[0].getHazelcastInstance(), instances[2].getHazelcastInstance(),
                 JetInitDataSerializerHook.FACTORY_ID, singletonList(INIT_EXECUTION_OP));
 
         DAG dag = new DAG().vertex(new Vertex("test", new MockPS(TestProcessors.Identity::new, nodeCount + 1)));
@@ -381,6 +381,16 @@ public class TopologyChangeTest extends JetTestSupport {
 
         // When
         long executionId = masterContext.getExecutionId();
+
+        assertTrueEventually(() -> {
+            Arrays.stream(instances)
+                  .filter(instance -> !instance.getHazelcastInstance().getCluster().getLocalMember().isLiteMember())
+                  .filter(instance ->  instance != instances[2])
+                  .map(JetTestSupport::getJetService)
+                  .map(service -> service.getJobExecutionService().getExecutionContext(executionId))
+                  .forEach(Assert::assertNotNull);
+        });
+
         newInstance.getHazelcastInstance().getLifecycleService().terminate();
         for (JetInstance instance : instances) {
             assertClusterSizeEventually(NODE_COUNT, instance.getHazelcastInstance());
@@ -403,7 +413,7 @@ public class TopologyChangeTest extends JetTestSupport {
 
         dropOperationsBetween(instances[2].getHazelcastInstance(), instances[0].getHazelcastInstance(),
                 PartitionDataSerializerHook.F_ID, singletonList(SHUTDOWN_REQUEST));
-        dropOperationsBetween(instances[0].getHazelcastInstance(), instances[2].getHazelcastInstance(),
+        rejectOperationsBetween(instances[0].getHazelcastInstance(), instances[2].getHazelcastInstance(),
                 JetInitDataSerializerHook.FACTORY_ID, singletonList(INIT_EXECUTION_OP));
 
         // When a job participant starts its shutdown after the job is submitted
@@ -433,7 +443,7 @@ public class TopologyChangeTest extends JetTestSupport {
             warmUpPartitions(instance.getHazelcastInstance());
         }
 
-        dropOperationsBetween(instances[0].getHazelcastInstance(), instances[2].getHazelcastInstance(),
+        rejectOperationsBetween(instances[0].getHazelcastInstance(), instances[2].getHazelcastInstance(),
                 JetInitDataSerializerHook.FACTORY_ID, singletonList(START_EXECUTION_OP));
 
         DAG dag = new DAG().vertex(new Vertex("test", new MockPS(TestProcessors.Identity::new, nodeCount - 1)));
@@ -460,9 +470,8 @@ public class TopologyChangeTest extends JetTestSupport {
         for (int i = 1; i < instances.length; i++) {
             memberInfos.add(new MemberInfo(getNode(instances[i].getHazelcastInstance()).getLocalMember()));
         }
-        ExecutionPlan plan = mock(ExecutionPlan.class);
 
-        InitExecutionOperation op = new InitExecutionOperation(jobId, executionId, memberListVersion, memberInfos, plan);
+        InitExecutionOperation op = new InitExecutionOperation(jobId, executionId, memberListVersion, memberInfos, null);
         Future<Object> future = getOperationService(master)
                 .createInvocationBuilder(JetService.SERVICE_NAME, op, getAddress(master))
                 .invoke();
@@ -471,7 +480,7 @@ public class TopologyChangeTest extends JetTestSupport {
             future.get();
             fail();
         } catch (ExecutionException e) {
-            assertTrue(e.getCause() instanceof IllegalArgumentException);
+            assertInstanceOf(IllegalArgumentException.class, e.getCause());
         }
     }
 }

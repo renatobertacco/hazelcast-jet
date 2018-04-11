@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,25 +16,29 @@
 
 package com.hazelcast.jet.core;
 
+import com.hazelcast.core.IMap;
+import com.hazelcast.jet.IMapJet;
 import com.hazelcast.jet.JetInstance;
 import com.hazelcast.jet.Job;
 import com.hazelcast.jet.Traverser;
 import com.hazelcast.jet.Traversers;
+import com.hazelcast.jet.accumulator.LongAccumulator;
 import com.hazelcast.jet.aggregate.AggregateOperation1;
 import com.hazelcast.jet.config.JetConfig;
 import com.hazelcast.jet.config.JobConfig;
 import com.hazelcast.jet.config.ProcessingGuarantee;
+import com.hazelcast.jet.core.processor.Processors;
 import com.hazelcast.jet.core.processor.SinkProcessors;
 import com.hazelcast.jet.core.test.TestProcessorMetaSupplierContext;
 import com.hazelcast.jet.core.test.TestSupport;
 import com.hazelcast.jet.datamodel.TimestampedEntry;
+import com.hazelcast.jet.function.DistributedFunction;
 import com.hazelcast.jet.impl.JobRepository;
 import com.hazelcast.jet.impl.SnapshotRepository;
 import com.hazelcast.jet.impl.execution.ExecutionContext;
 import com.hazelcast.jet.impl.execution.SnapshotContext;
 import com.hazelcast.jet.impl.execution.SnapshotRecord;
 import com.hazelcast.jet.impl.execution.init.JetInitDataSerializerHook;
-import com.hazelcast.jet.stream.IStreamMap;
 import com.hazelcast.nio.Address;
 import com.hazelcast.test.HazelcastSerialClassRunner;
 import org.junit.Before;
@@ -61,14 +65,13 @@ import static com.hazelcast.jet.core.Edge.between;
 import static com.hazelcast.jet.core.TestUtil.throttle;
 import static com.hazelcast.jet.core.WatermarkEmissionPolicy.emitByFrame;
 import static com.hazelcast.jet.core.WatermarkGenerationParams.wmGenParams;
-import static com.hazelcast.jet.core.WatermarkPolicies.withFixedLag;
-import static com.hazelcast.jet.core.processor.Processors.accumulateByFrameP;
-import static com.hazelcast.jet.core.processor.Processors.aggregateToSlidingWindowP;
+import static com.hazelcast.jet.core.WatermarkPolicies.limitingLag;
 import static com.hazelcast.jet.core.processor.Processors.combineToSlidingWindowP;
 import static com.hazelcast.jet.core.processor.Processors.insertWatermarksP;
 import static com.hazelcast.jet.core.processor.Processors.mapP;
 import static com.hazelcast.jet.core.processor.Processors.noopP;
 import static com.hazelcast.jet.core.processor.SinkProcessors.writeListP;
+import static com.hazelcast.jet.function.DistributedFunction.identity;
 import static com.hazelcast.jet.function.DistributedFunctions.entryKey;
 import static com.hazelcast.jet.impl.util.Util.arrayIndexOf;
 import static com.hazelcast.test.PacketFiltersUtil.delayOperationsFrom;
@@ -140,28 +143,32 @@ public class JobRestartWithSnapshotTest extends JetTestSupport {
 
         DAG dag = new DAG();
 
-        WindowDefinition wDef = WindowDefinition.tumblingWindowDef(3);
-        AggregateOperation1<Object, ?, Long> aggrOp = counting();
+        SlidingWindowPolicy wDef = SlidingWindowPolicy.tumblingWinPolicy(3);
+        AggregateOperation1<Object, LongAccumulator, Long> aggrOp = counting();
 
-        Map<List<Long>, Long> result = instance1.getMap("result");
+        IMap<List<Long>, Long> result = instance1.getMap("result");
         result.clear();
 
-        SequencesInPartitionsMetaSupplier sup = new SequencesInPartitionsMetaSupplier(3, 120);
+        SequencesInPartitionsMetaSupplier sup = new SequencesInPartitionsMetaSupplier(3, 180);
         Vertex generator = dag.newVertex("generator", throttle(sup, 30))
                               .localParallelism(1);
         Vertex insWm = dag.newVertex("insWm", insertWatermarksP(wmGenParams(
-                entry -> ((Entry<Integer, Integer>) entry).getValue(), withFixedLag(0), emitByFrame(wDef), -1)))
+                entry -> ((Entry<Integer, Integer>) entry).getValue(), limitingLag(0), emitByFrame(wDef), -1)))
                           .localParallelism(1);
         Vertex map = dag.newVertex("map",
                 mapP((TimestampedEntry e) -> entry(asList(e.getTimestamp(), (long) (int) e.getKey()), e.getValue())));
         Vertex writeMap = dag.newVertex("writeMap", SinkProcessors.writeMapP("result"));
 
         if (twoStage) {
-            Vertex aggregateStage1 = dag.newVertex("aggregateStage1", accumulateByFrameP(
-                    t -> ((Entry<Integer, Integer>) t).getKey(),
-                    t -> ((Entry<Integer, Integer>) t).getValue(),
-                    TimestampKind.EVENT, wDef, aggrOp));
-            Vertex aggregateStage2 = dag.newVertex("aggregateStage2", combineToSlidingWindowP(wDef, aggrOp));
+            Vertex aggregateStage1 = dag.newVertex("aggregateStage1", Processors.accumulateByFrameP(
+                    singletonList((DistributedFunction<? super Object, ?>) t -> ((Entry<Integer, Integer>) t).getKey()),
+                    singletonList(t1 -> ((Entry<Integer, Integer>) t1).getValue()),
+                    TimestampKind.EVENT,
+                    wDef,
+                    aggrOp.withFinishFn(identity())
+            ));
+            Vertex aggregateStage2 = dag.newVertex("aggregateStage2",
+                    combineToSlidingWindowP(wDef, aggrOp, TimestampedEntry::new));
 
             dag.edge(between(insWm, aggregateStage1)
                     .partitioned(entryKey()))
@@ -170,10 +177,13 @@ public class JobRestartWithSnapshotTest extends JetTestSupport {
                        .partitioned(entryKey()))
                .edge(between(aggregateStage2, map));
         } else {
-            Vertex aggregate = dag.newVertex("aggregate", aggregateToSlidingWindowP(
-                    t -> ((Entry<Integer, Integer>) t).getKey(),
-                    t -> ((Entry<Integer, Integer>) t).getValue(),
-                    TimestampKind.EVENT, wDef, aggrOp));
+            Vertex aggregate = dag.newVertex("aggregate", Processors.aggregateToSlidingWindowP(
+                    singletonList((DistributedFunction<Object, Integer>) t -> ((Entry<Integer, Integer>) t).getKey()),
+                    singletonList(t1 -> ((Entry<Integer, Integer>) t1).getValue()),
+                    TimestampKind.EVENT,
+                    wDef,
+                    aggrOp,
+                    TimestampedEntry::new));
 
             dag.edge(between(insWm, aggregate)
                     .distributed()
@@ -193,7 +203,7 @@ public class JobRestartWithSnapshotTest extends JetTestSupport {
         int timeout = (int) (MILLISECONDS.toSeconds(config.getSnapshotIntervalMillis()) + 2);
 
         // wait until we have at least one snapshot
-        IStreamMap<Long, Object> snapshotsMap = snapshotRepository.getSnapshotMap(job.getId());
+        IMapJet<Long, Object> snapshotsMap = snapshotRepository.getSnapshotMap(job.getId());
 
         assertTrueEventually(() -> assertTrue("No snapshot produced", snapshotsMap.entrySet().stream()
                 .anyMatch(en -> en.getValue() instanceof SnapshotRecord
@@ -218,7 +228,7 @@ public class JobRestartWithSnapshotTest extends JetTestSupport {
             long cnt = 0;
             for (long value = 1; value <= sup.elementsInPartition; value++) {
                 cnt++;
-                if (value % wDef.frameLength() == 0) {
+                if (value % wDef.frameSize() == 0) {
                     expectedMap.put(asList(value, partition), cnt);
                     cnt = 0;
                 }
@@ -312,20 +322,20 @@ public class JobRestartWithSnapshotTest extends JetTestSupport {
 
         // the first snapshot should succeed
         assertTrueEventually(() -> {
-            IStreamMap<Long, SnapshotRecord> records = getSnapshotsMap(job);
+            IMapJet<Long, SnapshotRecord> records = getSnapshotsMap(job);
             SnapshotRecord record = records.get(0L);
             assertNotNull("no record found for snapshot 0", record);
             assertTrue("snapshot was not successful", record.isSuccessful());
         }, 30);
     }
 
-    private IStreamMap<Long, SnapshotRecord> getSnapshotsMap(Job job) {
+    private IMapJet<Long, SnapshotRecord> getSnapshotsMap(Job job) {
         SnapshotRepository snapshotRepository = new SnapshotRepository(instance1);
         return snapshotRepository.getSnapshotMap(job.getId());
     }
 
     private SnapshotContext getSnapshotContext(Job job) {
-        IStreamMap<Long, Long> randomIdsMap = instance1.getMap(JobRepository.RANDOM_IDS_MAP_NAME);
+        IMapJet<Long, Long> randomIdsMap = instance1.getMap(JobRepository.RANDOM_IDS_MAP_NAME);
         long executionId = randomIdsMap.entrySet().stream()
                                        .filter(e -> e.getValue().equals(job.getId())
                                                && !e.getValue().equals(e.getKey()))
@@ -340,7 +350,7 @@ public class JobRestartWithSnapshotTest extends JetTestSupport {
         return executionContext.snapshotContext();
     }
 
-    private void waitForNextSnapshot(IStreamMap<Long, Object> snapshotsMap, int timeoutSeconds) {
+    private void waitForNextSnapshot(IMapJet<Long, Object> snapshotsMap, int timeoutSeconds) {
         SnapshotRecord maxRecord = findMaxRecord(snapshotsMap);
         assertNotNull("no snapshot found", maxRecord);
         // wait until there is at least one more snapshot
@@ -348,7 +358,7 @@ public class JobRestartWithSnapshotTest extends JetTestSupport {
                 findMaxRecord(snapshotsMap).snapshotId() > maxRecord.snapshotId()), timeoutSeconds);
     }
 
-    private SnapshotRecord findMaxRecord(IStreamMap<Long, Object> snapshotsMap) {
+    private SnapshotRecord findMaxRecord(IMapJet<Long, Object> snapshotsMap) {
         return snapshotsMap.entrySet().stream()
                            .filter(en -> en.getValue() instanceof SnapshotRecord)
                            .map(en -> (SnapshotRecord) en.getValue())
@@ -401,6 +411,7 @@ public class JobRestartWithSnapshotTest extends JetTestSupport {
         private int ptionCursor;
         private MyTraverser traverser;
         private Traverser<Entry<BroadcastKey<Integer>, Integer>> snapshotTraverser;
+        private Entry<Integer, Integer> pendingItem;
 
         SequencesInPartitionsGeneratorP(int[] assignedPtions, int elementsInPartition) {
             this.assignedPtions = assignedPtions;
@@ -411,17 +422,25 @@ public class JobRestartWithSnapshotTest extends JetTestSupport {
         }
 
         @Override
-        protected void init(@Nonnull Context context) throws Exception {
+        protected void init(@Nonnull Context context) {
             getLogger().info("assignedPtions=" + Arrays.toString(assignedPtions));
         }
 
         @Override
         public boolean complete() {
-            return emitFromTraverser(traverser, traverser::commit);
+            return emitFromTraverserInt(traverser);
         }
 
         @Override
         public boolean saveToSnapshot() {
+            // finish emitting any pending item first before starting snapshot
+            if (pendingItem != null) {
+                if (tryEmit(pendingItem)) {
+                    pendingItem = null;
+                } else {
+                    return false;
+                }
+            }
             if (snapshotTraverser == null) {
                 snapshotTraverser = Traversers.traverseStream(IntStream.range(0, assignedPtions.length).boxed())
                                               // save {partitionId; partitionOffset} tuples
@@ -452,6 +471,24 @@ public class JobRestartWithSnapshotTest extends JetTestSupport {
             return true;
         }
 
+        // this method is required to keep track of pending item
+        private boolean emitFromTraverserInt(MyTraverser traverser) {
+            Entry<Integer, Integer> item;
+            if (pendingItem != null) {
+                item = pendingItem;
+                pendingItem = null;
+            } else {
+                item = traverser.next();
+            }
+            for (; item != null; item = traverser.next()) {
+                if (!tryEmit(item)) {
+                    pendingItem = item;
+                    return false;
+                }
+            }
+            return true;
+        }
+
         private void advanceCursor() {
             ptionCursor = 0;
             int min = ptionOffsets[0];
@@ -466,15 +503,13 @@ public class JobRestartWithSnapshotTest extends JetTestSupport {
         private class MyTraverser implements Traverser<Entry<Integer, Integer>> {
             @Override
             public Entry<Integer, Integer> next() {
-                return ptionOffsets[ptionCursor] < elementsInPartition
-                        ? entry(assignedPtions[ptionCursor], ptionOffsets[ptionCursor]) : null;
-            }
-
-            void commit(Entry<Integer, Integer> item) {
-                assert item.getKey().equals(assignedPtions[ptionCursor]);
-                assert item.getValue().equals(ptionOffsets[ptionCursor]);
-                ptionOffsets[ptionCursor]++;
-                advanceCursor();
+                try {
+                    return ptionOffsets[ptionCursor] < elementsInPartition
+                            ? entry(assignedPtions[ptionCursor], ptionOffsets[ptionCursor]) : null;
+                } finally {
+                    ptionOffsets[ptionCursor]++;
+                    advanceCursor();
+                }
             }
         }
     }
@@ -484,7 +519,7 @@ public class JobRestartWithSnapshotTest extends JetTestSupport {
         private final int numPartitions;
         private final int elementsInPartition;
 
-        private int globalParallelism;
+        private int totalParallelism;
         private int localParallelism;
 
         SequencesInPartitionsMetaSupplier(int numPartitions, int elementsInPartition) {
@@ -494,7 +529,7 @@ public class JobRestartWithSnapshotTest extends JetTestSupport {
 
         @Override
         public void init(@Nonnull Context context) {
-            globalParallelism = context.totalParallelism();
+            totalParallelism = context.totalParallelism();
             localParallelism = context.localParallelism();
         }
 
@@ -505,7 +540,7 @@ public class JobRestartWithSnapshotTest extends JetTestSupport {
                 int startIndex = addresses.indexOf(address) * localParallelism;
                 return count -> IntStream.range(0, count)
                                          .mapToObj(index -> new SequencesInPartitionsGeneratorP(
-                                                 assignedPtions(startIndex + index, globalParallelism, numPartitions),
+                                                 assignedPtions(startIndex + index, totalParallelism, numPartitions),
                                                  elementsInPartition))
                                          .collect(toList());
             };

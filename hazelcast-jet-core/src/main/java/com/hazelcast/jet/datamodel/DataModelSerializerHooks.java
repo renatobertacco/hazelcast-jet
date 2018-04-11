@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,6 +39,48 @@ import static com.hazelcast.jet.datamodel.TwoBags.twoBags;
  * com.hazelcast.jet.datamodel} package. This is not a public-facing API.
  */
 class DataModelSerializerHooks {
+
+    public static final class TimestampedItemHook implements SerializerHook<TimestampedItem> {
+
+        @Override
+        public Class<TimestampedItem> getSerializationType() {
+            return TimestampedItem.class;
+        }
+
+        @Override
+        public Serializer createSerializer() {
+            return new StreamSerializer<TimestampedItem>() {
+                @Override
+                public int getTypeId() {
+                    return SerializerHookConstants.TIMESTAMPED_ITEM;
+                }
+
+                @Override
+                public void destroy() {
+
+                }
+
+                @Override
+                public void write(ObjectDataOutput out, TimestampedItem timestampedItem) throws IOException {
+                    out.writeLong(timestampedItem.timestamp());
+                    out.writeObject(timestampedItem.item());
+
+                }
+
+                @Override
+                public TimestampedItem read(ObjectDataInput in) throws IOException {
+                    long timestamp = in.readLong();
+                    Object item = in.readObject();
+                    return new TimestampedItem<>(timestamp, item);
+                }
+            };
+        }
+
+        @Override public boolean isOverwritable() {
+            return false;
+        }
+    }
+
     public static final class TimestampedEntryHook implements SerializerHook<TimestampedEntry> {
 
         @Override
@@ -80,36 +122,36 @@ class DataModelSerializerHooks {
         }
     }
 
-    public static final class SessionHook implements SerializerHook<Session> {
+    public static final class WindowResultHook implements SerializerHook<WindowResult> {
 
         @Override
-        public Class<Session> getSerializationType() {
-            return Session.class;
+        public Class<WindowResult> getSerializationType() {
+            return WindowResult.class;
         }
 
         @Override
         public Serializer createSerializer() {
-            return new StreamSerializer<Session>() {
+            return new StreamSerializer<WindowResult>() {
                 @Override
-                public void write(ObjectDataOutput out, Session object) throws IOException {
+                public void write(ObjectDataOutput out, WindowResult object) throws IOException {
                     out.writeObject(object.getKey());
                     out.writeLong(object.getStart());
                     out.writeLong(object.getEnd());
-                    out.writeObject(object.getResult());
+                    out.writeObject(object.getValue());
                 }
 
                 @Override
-                public Session read(ObjectDataInput in) throws IOException {
+                public WindowResult read(ObjectDataInput in) throws IOException {
                     Object key = in.readObject();
                     long start = in.readLong();
                     long end = in.readLong();
                     Object result = in.readObject();
-                    return new Session<>(key, start, end, result);
+                    return new WindowResult<>(start, end, key, result);
                 }
 
                 @Override
                 public int getTypeId() {
-                    return SerializerHookConstants.SESSION;
+                    return SerializerHookConstants.WINDOW_RESULT;
                 }
 
                 @Override

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,7 +29,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 
-import static com.hazelcast.jet.core.ProcessorMetaSupplier.dontParallelize;
 import static com.hazelcast.jet.core.processor.SinkProcessors.writeBufferedP;
 import static com.hazelcast.jet.impl.util.Util.uncheckCall;
 import static com.hazelcast.jet.impl.util.Util.uncheckRun;
@@ -56,8 +55,8 @@ public final class WriteFileP {
             @Nonnull String charset,
             boolean append) {
 
-        return dontParallelize(writeBufferedP(
-                globalIndex -> createBufferedWriter(Paths.get(directoryName), globalIndex,
+        return ProcessorMetaSupplier.preferLocalParallelismOne(writeBufferedP(
+                ctx -> createBufferedWriter(Paths.get(directoryName), ctx.globalProcessorIndex(),
                         charset, append),
                 (fileWriter, item) -> uncheckRun(() -> {
                     fileWriter.write(toStringFn.apply((T) item));

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ import com.hazelcast.jet.config.ProcessingGuarantee;
 import com.hazelcast.jet.impl.SnapshotRepository;
 import com.hazelcast.jet.impl.execution.SnapshotRecord;
 import com.hazelcast.jet.impl.execution.SnapshotRecord.SnapshotStatus;
-import com.hazelcast.jet.stream.IStreamMap;
+import com.hazelcast.jet.IMapJet;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -64,7 +64,7 @@ public class PostponedSnapshotTest extends JetTestSupport {
         config.setSnapshotIntervalMillis(100);
         Job job = instance.newJob(dag, config);
 
-        IStreamMap<Object, Object> snapshotsMap = instance.getMap(SnapshotRepository.snapshotsMapName(job.getId()));
+        IMapJet<Object, Object> snapshotsMap = instance.getMap(SnapshotRepository.snapshotsMapName(job.getId()));
 
         // check, that snapshot starts, but stays in ONGOING state
         assertTrueEventually(() -> assertTrue(existsSnapshot(snapshotsMap, ONGOING)), 5);
@@ -79,7 +79,7 @@ public class PostponedSnapshotTest extends JetTestSupport {
         job.join();
     }
 
-    private boolean existsSnapshot(IStreamMap<Object, Object> snapshotsMap, SnapshotStatus state) {
+    private boolean existsSnapshot(IMapJet<Object, Object> snapshotsMap, SnapshotStatus state) {
         return snapshotsMap.entrySet().stream()
                            .filter(e -> e.getValue() instanceof SnapshotRecord)
                            .map(e -> (SnapshotRecord) e.getValue())

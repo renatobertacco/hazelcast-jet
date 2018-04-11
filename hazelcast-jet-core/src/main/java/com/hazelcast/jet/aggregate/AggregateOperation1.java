@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,6 +37,15 @@ public interface AggregateOperation1<T, A, R> extends AggregateOperation<A, R> {
      */
     @Nonnull
     DistributedBiConsumer<? super A, ? super T> accumulateFn();
+
+    /**
+     * Returns a copy of this aggregate operation, but with the {@code
+     * accumulate} primitive replaced with the one supplied here.
+     */
+    @Nonnull
+    <NEW_T> AggregateOperation1<NEW_T, A, R> withAccumulateFn(
+            DistributedBiConsumer<? super A, ? super NEW_T> accumulateFn
+    );
 
     // Override with a narrowed return type
     @Nonnull @Override

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,8 +22,11 @@ import com.hazelcast.core.Member;
 import com.hazelcast.internal.serialization.InternalSerializationService;
 import com.hazelcast.jet.JetException;
 import com.hazelcast.jet.JetInstance;
+import com.hazelcast.jet.core.Watermark;
 import com.hazelcast.jet.function.DistributedBiFunction;
 import com.hazelcast.jet.impl.JetService;
+import com.hazelcast.jet.impl.pipeline.JetEvent;
+import com.hazelcast.logging.ILogger;
 import com.hazelcast.map.AbstractEntryProcessor;
 import com.hazelcast.map.EntryProcessor;
 import com.hazelcast.nio.Address;
@@ -49,6 +52,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -62,6 +66,7 @@ import java.util.function.Supplier;
 
 import static com.hazelcast.jet.Util.entry;
 import static com.hazelcast.jet.impl.util.ExceptionUtil.sneakyThrow;
+import static java.lang.Math.abs;
 import static java.util.Collections.emptyList;
 import static java.util.stream.Collectors.groupingBy;
 import static java.util.stream.Collectors.mapping;
@@ -72,6 +77,7 @@ public final class Util {
 
     private static final int BUFFER_SIZE = 1 << 15;
     private static final char[] ID_TEMPLATE = "0000-0000-0000-0000".toCharArray();
+    private static final DateTimeFormatter LOCAL_TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss.SSS");
 
     private Util() {
     }
@@ -309,6 +315,10 @@ public final class Util {
         return toZonedDateTime(timestamp).toLocalDateTime();
     }
 
+    public static String toLocalTime(long timestamp) {
+        return toZonedDateTime(timestamp).toLocalTime().format(LOCAL_TIME_FORMATTER);
+    }
+
     @SuppressWarnings("checkstyle:magicnumber")
     public static String idToString(long id) {
         char[] buf = Arrays.copyOf(ID_TEMPLATE, ID_TEMPLATE.length);
@@ -354,7 +364,7 @@ public final class Util {
     }
 
     /**
-     * Returns a future which is already completed with the supplied exception
+     * Returns a future which is already completed with the supplied exception.
      */
     public static <T> CompletableFuture<T> exceptionallyCompletedFuture(@Nonnull Throwable exception) {
         CompletableFuture<T> future = new CompletableFuture<>();
@@ -362,4 +372,45 @@ public final class Util {
         return future;
     }
 
+    public static void logLateEvent(ILogger logger, long currentWm, @Nonnull Object item) {
+        if (!logger.isInfoEnabled()) {
+            return;
+        }
+        if (item instanceof JetEvent) {
+            JetEvent event = (JetEvent) item;
+            logger.info(
+                    String.format("Event dropped, late by %dms. currentWatermark=%s, eventTime=%s, event=%s",
+                            currentWm - event.timestamp(), toLocalTime(currentWm), toLocalTime(event.timestamp()),
+                            event.payload()
+                    ));
+        } else {
+            logger.info(String.format(
+                    "Late event dropped. currentWatermark=%s, event=%s", new Watermark(currentWm), item
+            ));
+        }
+    }
+
+    /**
+     * Calculate greatest common divisor of a series of integer numbers. Returns
+     * 0, if the number of values is 0.
+     */
+    public static long gcd(long ... values) {
+        long res = 0;
+        for (long value : values) {
+            res = gcd(res, value);
+        }
+        return res;
+    }
+
+    /**
+     * Calculate greatest common divisor of two integer numbers.
+     */
+    public static long gcd(long a, long b) {
+        a = abs(a);
+        b = abs(b);
+        if (b == 0) {
+            return a;
+        }
+        return gcd(b, a % b);
+    }
 }

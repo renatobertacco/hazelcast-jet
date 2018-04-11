@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -284,11 +284,30 @@ public class DAG implements IdentifiedDataSerializable, Iterable<Vertex> {
 
     @Override
     public String toString() {
+        return toString(-1);
+    }
+
+    /**
+     * Returns a string representation of the DAG.
+     *
+     * @param defaultLocalParallelism the local parallelism that will be shown if
+     *                                neither overridden on the vertex nor the
+     *                                preferred parallelism is defined by
+     *                                meta-supplier
+     */
+    public String toString(int defaultLocalParallelism) {
         final StringBuilder b = new StringBuilder("dag\n");
         for (Vertex v : this) {
             b.append("    .vertex(\"").append(v.getName()).append("\")");
-            if (v.getLocalParallelism() != -1) {
-                b.append(".localParallelism(").append(v.getLocalParallelism()).append(')');
+            int localParallelism = v.getLocalParallelism();
+            if (localParallelism == -1) {
+                localParallelism = v.getMetaSupplier().preferredLocalParallelism();
+                if (localParallelism == -1) {
+                    localParallelism = defaultLocalParallelism;
+                }
+            }
+            if (localParallelism != -1) {
+                b.append(".localParallelism(").append(localParallelism).append(')');
             }
             b.append('\n');
         }

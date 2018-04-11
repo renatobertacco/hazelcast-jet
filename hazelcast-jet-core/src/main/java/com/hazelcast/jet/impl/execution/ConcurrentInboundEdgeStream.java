@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,8 @@ import com.hazelcast.jet.JetException;
 import com.hazelcast.jet.core.Watermark;
 import com.hazelcast.jet.impl.util.ProgressState;
 import com.hazelcast.jet.impl.util.ProgressTracker;
+import com.hazelcast.logging.ILogger;
+import com.hazelcast.logging.Logger;
 import com.hazelcast.util.function.Predicate;
 
 import java.util.BitSet;
@@ -30,6 +32,7 @@ import java.util.function.Consumer;
 
 import static com.hazelcast.jet.impl.execution.DoneItem.DONE_ITEM;
 import static com.hazelcast.jet.impl.execution.WatermarkCoalescer.NO_NEW_WM;
+import static com.hazelcast.jet.impl.util.ProgressState.DONE;
 import static com.hazelcast.jet.impl.util.ProgressState.MADE_PROGRESS;
 
 /**
@@ -48,6 +51,7 @@ public class ConcurrentInboundEdgeStream implements InboundEdgeStream {
 
     private final WatermarkCoalescer watermarkCoalescer;
     private final BitSet receivedBarriers; // indicates if current snapshot is received on the queue
+    private final ILogger logger;
     private long pendingSnapshotId; // next snapshot barrier to emit
     private long numActiveQueues; // number of active queues remaining
 
@@ -57,7 +61,8 @@ public class ConcurrentInboundEdgeStream implements InboundEdgeStream {
      *                        vs. at-least-once, if it is false.
      */
     public ConcurrentInboundEdgeStream(ConcurrentConveyor<Object> conveyor, int ordinal, int priority,
-                                       long lastSnapshotId, boolean waitForSnapshot, int maxWatermarkRetainMillis) {
+                                       long lastSnapshotId, boolean waitForSnapshot, int maxWatermarkRetainMillis,
+                                       String debugName) {
         this.conveyor = conveyor;
         this.ordinal = ordinal;
         this.priority = priority;
@@ -68,6 +73,7 @@ public class ConcurrentInboundEdgeStream implements InboundEdgeStream {
         numActiveQueues = conveyor.queueCount();
         receivedBarriers = new BitSet(conveyor.queueCount());
         pendingSnapshotId = lastSnapshotId + 1;
+        logger = Logger.getLogger(ConcurrentInboundEdgeStream.class.getName() + "." + debugName);
     }
 
     @Override
@@ -107,11 +113,16 @@ public class ConcurrentInboundEdgeStream implements InboundEdgeStream {
                 receivedBarriers.clear(queueIndex);
                 numActiveQueues--;
                 if (maybeEmitWm(watermarkCoalescer.queueDone(queueIndex), dest)) {
-                    return MADE_PROGRESS;
+                    return numActiveQueues == 0 ? DONE : MADE_PROGRESS;
                 }
             } else if (itemDetector.item instanceof Watermark) {
                 long wmTimestamp = ((Watermark) itemDetector.item).timestamp();
-                if (maybeEmitWm(watermarkCoalescer.observeWm(now, queueIndex, wmTimestamp), dest)) {
+                boolean forwarded = maybeEmitWm(watermarkCoalescer.observeWm(now, queueIndex, wmTimestamp), dest);
+                if (logger.isFinestEnabled()) {
+                    logger.finest("Received " + itemDetector.item + " from queue " + queueIndex + '/'
+                            + conveyor.queueCount() + (forwarded ? ", forwarded" : ", not forwarded"));
+                }
+                if (forwarded) {
                     return MADE_PROGRESS;
                 }
             } else if (itemDetector.item instanceof SnapshotBarrier) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package com.hazelcast.jet.stream;
 
 import com.hazelcast.core.IList;
+import com.hazelcast.jet.IMapJet;
 import com.hazelcast.jet.function.DistributedIntUnaryOperator;
 import org.junit.Before;
 import org.junit.Test;
@@ -39,19 +40,22 @@ import static org.junit.Assert.assertTrue;
 
 public class IntStreamTest extends AbstractStreamTest {
 
-    private IStreamMap<String, Integer> map;
+    private IMapJet<String, Integer> map;
     private DistributedIntStream stream;
 
     @Before
     public void setupMap() {
         map = getMap();
         fillMap(map);
-        stream = map.stream().mapToInt(Map.Entry::getValue);
+        stream = DistributedStream.fromMap(map).mapToInt(Map.Entry::getValue);
     }
 
     @Test
     public void flatMapToInt() {
-        int[] values = map.stream().flatMapToInt(e -> IntStream.of(e.getValue(), e.getValue())).toArray();
+        int[] values = DistributedStream
+                .fromMap(map)
+                .flatMapToInt(e -> IntStream.of(e.getValue(), e.getValue()))
+                .toArray();
         Arrays.sort(values);
 
         for (int i = 0; i < COUNT * 2; i += 2) {

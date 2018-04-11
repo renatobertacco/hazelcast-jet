@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package com.hazelcast.jet.stream;
 
+import com.hazelcast.jet.IListJet;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -28,8 +29,8 @@ public class DoubleStreamCastingTest extends AbstractStreamTest {
 
     @Before
     public void setUp() {
-        IStreamList<Integer> list = getList();
-        stream = list.stream().mapToDouble(m -> m);
+        IListJet<Integer> list = getList();
+        stream = DistributedStream.fromList(list).mapToDouble(m -> m);
     }
 
     @Test(expected = IllegalArgumentException.class)

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,8 @@ package com.hazelcast.jet.config;
 import com.hazelcast.jet.core.Edge;
 
 import java.io.Serializable;
+
+import static com.hazelcast.util.Preconditions.checkPositive;
 
 /**
  * A configuration object for a DAG {@link Edge} that holds fine-tuning
@@ -65,6 +67,7 @@ public class EdgeConfig implements Serializable {
      * @return {@code this} instance for fluent API
      */
     public EdgeConfig setQueueSize(int queueSize) {
+        checkPositive(queueSize, "queueSize should be a positive number");
         this.queueSize = queueSize;
         return this;
     }
@@ -104,6 +107,7 @@ public class EdgeConfig implements Serializable {
      * @return {@code this} instance for fluent API
      */
     public EdgeConfig setReceiveWindowMultiplier(int receiveWindowMultiplier) {
+        checkPositive(receiveWindowMultiplier, "receiveWindowMultiplier should be a positive number");
         this.receiveWindowMultiplier = receiveWindowMultiplier;
         return this;
     }
@@ -131,6 +135,7 @@ public class EdgeConfig implements Serializable {
      * @return {@code this} instance for fluent API
      */
     public EdgeConfig setPacketSizeLimit(int packetSizeLimit) {
+        checkPositive(packetSizeLimit, "packetSizeLimit should be a positive number");
         this.packetSizeLimit = packetSizeLimit;
         return this;
     }

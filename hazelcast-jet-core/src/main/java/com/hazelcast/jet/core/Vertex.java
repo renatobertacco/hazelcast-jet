@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -115,8 +115,11 @@ public class Vertex implements IdentifiedDataSerializable {
      * Says whether the given integer is valid as the value of {@link
      * #localParallelism(int) localParallelism}.
      */
-    public static boolean isValidLocalParallelism(int parallelism) {
-        return parallelism == LOCAL_PARALLELISM_USE_DEFAULT || parallelism > 0;
+    public static int checkLocalParallelism(int parallelism) {
+        if (parallelism != LOCAL_PARALLELISM_USE_DEFAULT && parallelism <= 0) {
+            throw new IllegalArgumentException("Parallelism must be either -1 or a positive number");
+        }
+        return parallelism;
     }
 
     /**
@@ -129,10 +132,7 @@ public class Vertex implements IdentifiedDataSerializable {
      */
     @Nonnull
     public Vertex localParallelism(int localParallelism) {
-        if (!isValidLocalParallelism(localParallelism)) {
-            throw new IllegalArgumentException("Parallelism must be either -1 or a positive number");
-        }
-        this.localParallelism = localParallelism;
+        this.localParallelism = checkLocalParallelism(localParallelism);
         return this;
     }
 

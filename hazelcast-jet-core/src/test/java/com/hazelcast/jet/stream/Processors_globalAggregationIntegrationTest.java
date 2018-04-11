@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import com.hazelcast.jet.core.DAG;
 import com.hazelcast.jet.core.JetTestSupport;
 import com.hazelcast.jet.core.TestProcessors.ListSource;
 import com.hazelcast.jet.core.Vertex;
+import com.hazelcast.jet.core.processor.Processors;
 import com.hazelcast.test.HazelcastParametersRunnerFactory;
 import com.hazelcast.test.annotation.ParallelTest;
 import org.junit.Test;
@@ -38,8 +39,6 @@ import java.util.List;
 
 import static com.hazelcast.jet.aggregate.AggregateOperations.summingLong;
 import static com.hazelcast.jet.core.Edge.between;
-import static com.hazelcast.jet.core.processor.Processors.accumulateP;
-import static com.hazelcast.jet.core.processor.Processors.aggregateP;
 import static com.hazelcast.jet.core.processor.Processors.combineP;
 import static com.hazelcast.jet.core.processor.SinkProcessors.writeListP;
 import static java.util.Arrays.asList;
@@ -75,14 +74,14 @@ public class Processors_globalAggregationIntegrationTest extends JetTestSupport 
         Vertex sink = dag.newVertex("sink", writeListP("sink"));
 
         if (singleStageProcessor) {
-            Vertex aggregate = dag.newVertex("aggregate", aggregateP(summingOp))
+            Vertex aggregate = dag.newVertex("aggregate", Processors.aggregateP(summingOp))
                     .localParallelism(1);
             dag
                     .edge(between(source, aggregate).distributed().allToOne())
                     .edge(between(aggregate, sink).isolated());
 
         } else {
-            Vertex accumulate = dag.newVertex("accumulate", accumulateP(summingOp));
+            Vertex accumulate = dag.newVertex("accumulate", Processors.accumulateP(summingOp));
             Vertex combine = dag.newVertex("combine", combineP(summingOp)).localParallelism(1);
             dag
                     .edge(between(source, accumulate))

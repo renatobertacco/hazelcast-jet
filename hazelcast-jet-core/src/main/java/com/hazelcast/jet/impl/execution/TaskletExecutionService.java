@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,11 +41,13 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 
 import static com.hazelcast.jet.impl.util.ExceptionUtil.withTryCatch;
+import static com.hazelcast.jet.impl.util.LoggingUtil.logFine;
 import static com.hazelcast.jet.impl.util.Util.uncheckRun;
 import static java.lang.Thread.currentThread;
 import static java.util.concurrent.Executors.newCachedThreadPool;
 import static java.util.concurrent.TimeUnit.MICROSECONDS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static java.util.stream.Collectors.joining;
 import static java.util.stream.Collectors.partitioningBy;
 import static java.util.stream.Collectors.toList;
@@ -202,6 +204,8 @@ public class TaskletExecutionService {
     }
 
     private final class CooperativeWorker implements Runnable {
+        private static final int COOPERATIVE_LOGGING_THRESHOLD = 5;
+
         private final List<TaskletTracker> trackers;
         private final CooperativeWorker[] colleagues;
 
@@ -218,11 +222,16 @@ public class TaskletExecutionService {
             while (!isShutdown) {
                 boolean madeProgress = false;
                 for (TaskletTracker t : trackers) {
+                    long start = 0;
+                    if (logger.isFinestEnabled()) {
+                        start = System.nanoTime();
+                    }
                     final CooperativeWorker stealingWorker = t.stealingWorker.get();
                     if (stealingWorker != null) {
                         t.stealingWorker.set(null);
                         trackers.remove(t);
                         stealingWorker.trackers.add(t);
+                        logFine(logger, "Tasklet %s was stolen from this worker", t.tasklet);
                         continue;
                     }
                     try {
@@ -239,6 +248,14 @@ public class TaskletExecutionService {
                     }
                     if (t.executionTracker.executionCompletedExceptionally()) {
                         dismissTasklet(t);
+                    }
+
+                    if (logger.isFinestEnabled()) {
+                        long elapsedMs = NANOSECONDS.toMillis((System.nanoTime() - start));
+                        if (elapsedMs > COOPERATIVE_LOGGING_THRESHOLD) {
+                            logger.finest("Cooperative tasklet call of '" + t.tasklet + "' took more than "
+                                    + COOPERATIVE_LOGGING_THRESHOLD + " ms: " + elapsedMs + "ms");
+                        }
                     }
                 }
                 if (madeProgress) {

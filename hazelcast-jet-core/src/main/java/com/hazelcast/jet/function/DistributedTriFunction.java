@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,18 +19,9 @@ package com.hazelcast.jet.function;
 import java.io.Serializable;
 
 /**
- * Represents a three-arity function that accepts three arguments and produces a result.
+ * {@code Serializable} variant of {@link TriFunction}.
+ *
  **/
 @FunctionalInterface
-public interface DistributedTriFunction<T, U, V, R> extends Serializable {
-
-    /**
-     * Applies this function to the given arguments.
-     *
-     * @param t the first argument
-     * @param u the second argument
-     * @param v the third argument
-     * @return the function result
-     */
-    R apply(T t, U u, V v);
+public interface DistributedTriFunction<T, U, V, R> extends TriFunction<T, U, V, R>, Serializable {
 }

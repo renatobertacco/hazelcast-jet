@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,21 +29,18 @@ import java.util.List;
 class SerializableClientConfig implements Serializable {
 
     private String groupName;
-    private String groupPass;
     private List<String> addresses;
 
     SerializableClientConfig(ClientConfig clientConfig) {
         GroupConfig groupConfig = clientConfig.getGroupConfig();
         List<String> addresses = clientConfig.getNetworkConfig().getAddresses();
         this.groupName = groupConfig.getName();
-        this.groupPass = groupConfig.getPassword();
         this.addresses = addresses;
     }
 
     ClientConfig asClientConfig() {
         ClientConfig config = new ClientConfig();
         config.getGroupConfig().setName(groupName);
-        config.getGroupConfig().setPassword(groupPass);
         config.getNetworkConfig().setAddresses(addresses);
         return config;
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -356,7 +356,7 @@ public final class AggregateOperationBuilder<A> {
          * @param tag the tag of the associated input stream
          * @param accumulateFn the {@code accumulate} primitive
          * @param <T> the expected type of input item
-         * @return a new builder object for variable-arity aggregate operations
+         * @return this
          */
         @Nonnull
         public <T> VarArity<A> andAccumulate(

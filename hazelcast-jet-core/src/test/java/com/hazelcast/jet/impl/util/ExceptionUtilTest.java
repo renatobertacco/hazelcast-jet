@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import com.hazelcast.jet.JetException;
 import com.hazelcast.jet.JetInstance;
 import com.hazelcast.jet.core.DAG;
 import com.hazelcast.jet.core.JetTestSupport;
-import com.hazelcast.jet.core.TestProcessors.ProcessorThatFailsInComplete;
+import com.hazelcast.jet.core.TestProcessors.MockP;
 import com.hazelcast.jet.core.TestUtil;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import org.junit.Rule;
@@ -74,7 +74,7 @@ public class ExceptionUtilTest extends JetTestSupport {
         RuntimeException exc = new RuntimeException("myException");
         try {
             DAG dag = new DAG();
-            dag.newVertex("source", () -> new ProcessorThatFailsInComplete(exc)).localParallelism(1);
+            dag.newVertex("source", () -> new MockP().setCompleteError(exc)).localParallelism(1);
             client.newJob(dag).join();
         } catch (Exception caught) {
             assertThat(caught.toString(), containsString(exc.toString()));
@@ -92,7 +92,7 @@ public class ExceptionUtilTest extends JetTestSupport {
         RuntimeException exc = new RuntimeException("myException");
         try {
             DAG dag = new DAG();
-            dag.newVertex("source", () -> new ProcessorThatFailsInComplete(exc)).localParallelism(1);
+            dag.newVertex("source", () -> new MockP().setCompleteError(exc)).localParallelism(1);
             client.newJob(dag).join();
         } catch (Exception caught) {
             assertThat(caught.toString(), containsString(exc.toString()));

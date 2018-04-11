@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2018, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ import org.junit.runner.RunWith;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CountDownLatch;
 
-import static com.hazelcast.test.PacketFiltersUtil.dropOperationsBetween;
+import static com.hazelcast.test.PacketFiltersUtil.rejectOperationsBetween;
 import static com.hazelcast.test.PacketFiltersUtil.resetPacketFiltersFrom;
 import static java.util.Collections.singletonList;
 import static org.junit.Assert.assertEquals;
@@ -51,9 +51,9 @@ public class ManualRestartTest extends JetTestSupport {
 
     @Before
     public void setup() {
-        MockPS.completeCount.set(0);
+        MockPS.closeCount.set(0);
         MockPS.initCount.set(0);
-        MockPS.completeErrors.clear();
+        MockPS.receivedCloseErrors.clear();
 
         StuckProcessor.proceedLatch = new CountDownLatch(1);
         StuckProcessor.executionStarted = new CountDownLatch(NODE_COUNT * LOCAL_PARALLELISM);
@@ -99,7 +99,7 @@ public class ManualRestartTest extends JetTestSupport {
     @Test
     public void when_jobIsNotBeingExecuted_then_itCannotBeRestarted() {
         // Given that the job execution has not started
-        dropOperationsBetween(instances[0].getHazelcastInstance(), instances[1].getHazelcastInstance(),
+        rejectOperationsBetween(instances[0].getHazelcastInstance(), instances[1].getHazelcastInstance(),
                 JetInitDataSerializerHook.FACTORY_ID, singletonList(JetInitDataSerializerHook.INIT_EXECUTION_OP));
 
         JetInstance client = createJetClient();
